@@ -20,7 +20,7 @@ export const metadata: Metadata = {
     template: "%s · Aguará App",
   },
   description:
-    "QR en el collar, perfil del tutor y ficha médica digital. Registrá mascota y dueño en segundos.",
+    "QR en el collar, perfil del tutor y ficha médica digital. Registrá mascota y tutor en segundos.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -127,6 +127,10 @@ export default function HistoriasSection({ clinicaId }) {
                       {c.motivo || "Consulta"} · {c.clinica_veterinarios?.nombre || "Sin vet"} ·{" "}
                       {c.cerrada ? "Cerrada" : "Abierta"}
                     </p>
+                    <p className="mt-0.5 text-xs text-stone-400">
+                      Última modificación:{" "}
+                      {formatDateTime(c.actualizado_en || c.cerrado_en || c.creado_en || c.fecha)}
+                    </p>
                   </div>
                   <span className="text-sm text-aguara-orange">Abrir</span>
                 </button>
@@ -168,15 +172,18 @@ function ConsultaForm({ clinicaId, pacientes, vets, onSaved, onCancel, initial }
       };
       if (initial?.id) {
         await actualizarConsulta(initial.id, {
-          motivo: payload.motivo,
-          anamnesis: payload.anamnesis,
-          examen_fisico: payload.examen_fisico,
-          diagnostico: payload.diagnostico,
-          tratamiento: payload.tratamiento,
-          medicacion: payload.medicacion,
-          peso: payload.peso === "" ? null : Number(payload.peso),
-          temperatura: payload.temperatura === "" ? null : Number(payload.temperatura),
-          observaciones: payload.observaciones,
+          motivo: payload.motivo?.trim() || null,
+          anamnesis: payload.anamnesis?.trim() || null,
+          examen_fisico: payload.examen_fisico?.trim() || null,
+          diagnostico: payload.diagnostico?.trim() || null,
+          tratamiento: payload.tratamiento?.trim() || null,
+          medicacion: payload.medicacion?.trim() || null,
+          peso: payload.peso === "" || payload.peso == null ? null : Number(payload.peso),
+          temperatura:
+            payload.temperatura === "" || payload.temperatura == null
+              ? null
+              : Number(payload.temperatura),
+          observaciones: payload.observaciones?.trim() || null,
           veterinario_id: payload.veterinario_id || null,
         });
       } else {
@@ -193,8 +200,16 @@ function ConsultaForm({ clinicaId, pacientes, vets, onSaved, onCancel, initial }
   return (
     <form onSubmit={handleSubmit} className={`${cardClass} space-y-3`}>
       <h3 className="font-semibold text-aguara-ink">
-        {initial?.id ? "Editar consulta" : "Nueva consulta / evolución"}
+        {initial?.id ? "Editar historia clínica" : "Nueva consulta / evolución"}
       </h3>
+      {initial?.id ? (
+        <p className="text-sm text-stone-500">
+          Última modificación:{" "}
+          {formatDateTime(
+            initial.actualizado_en || initial.cerrado_en || initial.creado_en || initial.fecha,
+          )}
+        </p>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Paciente" id="hc-pac">
           <select
@@ -405,16 +420,28 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
             <h2 className="text-xl font-semibold text-aguara-ink">
               {consulta.clinica_pacientes?.nombre}
             </h2>
-            <p className="text-sm text-stone-500">{formatDateTime(consulta.fecha)}</p>
+            <p className="text-sm text-stone-500">
+              Fecha de consulta: {formatDateTime(consulta.fecha)}
+            </p>
+            <p className="text-xs text-stone-400">
+              Última modificación:{" "}
+              {formatDateTime(
+                consulta.actualizado_en || consulta.cerrado_en || consulta.creado_en || consulta.fecha,
+              )}
+            </p>
           </div>
           <div className="flex gap-2">
-            {!consulta.cerrada ? (
-              <button type="button" className={secondaryBtnClass} onClick={() => setEditing(true)}>
-                Editar
-              </button>
-            ) : null}
+            <button type="button" className={secondaryBtnClass} onClick={() => setEditing(true)}>
+              Editar historia
+            </button>
           </div>
         </div>
+        {consulta.cerrada ? (
+          <p className="mt-3 text-xs text-amber-800">
+            Esta consulta está cerrada/firmada. Podés editar el contenido; la firma original se
+            conserva.
+          </p>
+        ) : null}
         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
           <Item label="Motivo" value={consulta.motivo} />
           <Item
@@ -440,6 +467,13 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
             value={consulta.temperatura ? `${consulta.temperatura} °C` : null}
           />
           <Item label="Observaciones" value={consulta.observaciones} wide />
+          <Item
+            label="Última modificación"
+            value={formatDateTime(
+              consulta.actualizado_en || consulta.cerrado_en || consulta.creado_en || consulta.fecha,
+            )}
+            wide
+          />
         </dl>
         {consulta.cerrada ? (
           <div className="mt-4 rounded-xl bg-emerald-50 px-3 py-3 text-sm text-emerald-900">

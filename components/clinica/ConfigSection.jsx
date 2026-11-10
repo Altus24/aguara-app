@@ -502,13 +502,24 @@ function Servicios({ clinicaId }) {
 
 function Horarios({ clinicaId }) {
   const [items, setItems] = useState([]);
+  const [vets, setVets] = useState([]);
+  const [veterinarioId, setVeterinarioId] = useState("");
+  const [filtroVet, setFiltroVet] = useState("");
   const [diaSemana, setDiaSemana] = useState("1");
   const [horaInicio, setHoraInicio] = useState("09:00");
   const [horaFin, setHoraFin] = useState("18:00");
   const [error, setError] = useState("");
 
   async function reload() {
-    setItems(await listarHorarios(clinicaId));
+    const [horarios, veterinarios] = await Promise.all([
+      listarHorarios(clinicaId),
+      listarVeterinarios(clinicaId),
+    ]);
+    setItems(horarios);
+    setVets(veterinarios.filter((v) => v.activo !== false));
+    if (!veterinarioId && veterinarios[0]?.id) {
+      setVeterinarioId(veterinarios[0].id);
+    }
   }
 
   useEffect(() => {
@@ -516,21 +527,54 @@ function Horarios({ clinicaId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clinicaId]);
 
+  const visibles = filtroVet
+    ? items.filter((h) => h.veterinario_id === filtroVet)
+    : items;
+
   return (
     <div className={`${cardClass} space-y-4`}>
-      <h3 className="font-semibold text-aguara-ink">Horarios disponibles</h3>
+      <div>
+        <h3 className="font-semibold text-aguara-ink">Horarios por veterinario</h3>
+        <p className="text-sm text-stone-500">
+          Cada veterinario define sus propios días y franjas de atención.
+        </p>
+      </div>
+      {vets.length === 0 ? (
+        <p className="text-sm text-amber-800">
+          Primero registrá veterinarios en la pestaña Veterinarios.
+        </p>
+      ) : null}
       <form
-        className="grid gap-3 sm:grid-cols-4"
+        className="grid gap-3 sm:grid-cols-5"
         onSubmit={async (e) => {
           e.preventDefault();
+          setError("");
           try {
-            await crearHorario(clinicaId, { diaSemana, horaInicio, horaFin });
+            await crearHorario(clinicaId, {
+              diaSemana,
+              horaInicio,
+              horaFin,
+              veterinarioId,
+            });
             await reload();
           } catch (err) {
             setError(err.message);
           }
         }}
       >
+        <select
+          className={fieldClass}
+          required
+          value={veterinarioId}
+          onChange={(e) => setVeterinarioId(e.target.value)}
+        >
+          <option value="">Veterinario…</option>
+          {vets.map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.nombre}
+            </option>
+          ))}
+        </select>
         <select
           className={fieldClass}
           value={diaSemana}
@@ -554,30 +598,61 @@ function Horarios({ clinicaId }) {
           value={horaFin}
           onChange={(e) => setHoraFin(e.target.value)}
         />
-        <button type="submit" className={primaryBtnClass}>
+        <button type="submit" className={primaryBtnClass} disabled={!veterinarioId}>
           Agregar
         </button>
       </form>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <ul className="space-y-2 text-sm">
-        {items.map((slot) => (
-          <li key={slot.id} className="flex justify-between">
-            <span>
-              {DIAS_SEMANA[slot.dia_semana]} · {formatTime(slot.hora_inicio)}–
-              {formatTime(slot.hora_fin)}
-            </span>
-            <button
-              type="button"
-              className="text-stone-500 underline"
-              onClick={async () => {
-                await eliminarHorario(slot.id);
-                await reload();
-              }}
-            >
-              Quitar
-            </button>
-          </li>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className={`rounded-full px-3 py-1 text-xs font-medium ${
+            !filtroVet ? "bg-aguara-orange text-white" : "bg-stone-100 text-stone-700"
+          }`}
+          onClick={() => setFiltroVet("")}
+        >
+          Todos
+        </button>
+        {vets.map((v) => (
+          <button
+            key={v.id}
+            type="button"
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              filtroVet === v.id ? "bg-aguara-orange text-white" : "bg-stone-100 text-stone-700"
+            }`}
+            onClick={() => setFiltroVet(v.id)}
+          >
+            {v.nombre}
+          </button>
         ))}
+      </div>
+      <ul className="space-y-2 text-sm">
+        {visibles.length === 0 ? (
+          <li className="text-stone-500">Sin horarios cargados.</li>
+        ) : (
+          visibles.map((slot) => (
+            <li key={slot.id} className="flex justify-between gap-3">
+              <span>
+                <span className="font-medium text-aguara-ink">
+                  {slot.clinica_veterinarios?.nombre || "General (legado)"}
+                </span>
+                {" · "}
+                {DIAS_SEMANA[slot.dia_semana]} · {formatTime(slot.hora_inicio)}–
+                {formatTime(slot.hora_fin)}
+              </span>
+              <button
+                type="button"
+                className="shrink-0 text-stone-500 underline"
+                onClick={async () => {
+                  await eliminarHorario(slot.id);
+                  await reload();
+                }}
+              >
+                Quitar
+              </button>
+            </li>
+          ))
+        )}
       </ul>
     </div>
   );

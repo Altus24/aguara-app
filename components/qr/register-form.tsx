@@ -123,7 +123,7 @@ export function RegisterForm({
       </section>
 
       <section className="rounded-2xl border border-stone-200 bg-white p-5 sm:p-6">
-        <h2 className="text-base font-semibold text-aguara-ink">Dueño / tutor</h2>
+        <h2 className="text-base font-semibold text-aguara-ink">Tutor</h2>
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <Field label="Nombre y apellido" error={errors.fullName?.message}>
             <input {...register("fullName")} autoComplete="name" className={inputClass} />
@@ -218,7 +218,7 @@ export function RegisterForm({
       {serverError ? <Alert>{serverError}</Alert> : null}
 
       <button type="submit" className={primaryButtonClass} disabled={pending}>
-        {pending ? "Registrando…" : "Registrar mascota y dueño"}
+        {pending ? "Registrando…" : "Registrar mascota y tutor"}
       </button>
     </form>
   );

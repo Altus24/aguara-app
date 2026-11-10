@@ -32,7 +32,7 @@ export function Benefits() {
       <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
         <p className="text-sm font-medium text-aguara-orange">Beneficios clave</p>
         <h2 className="mt-3 max-w-2xl text-balance text-3xl font-semibold tracking-tight text-aguara-ink sm:text-4xl">
-          Pensado para dueños y clínicas.
+          Pensado para tutores y clínicas.
         </h2>
         <div className="mt-12 grid gap-5 sm:grid-cols-2">
           {benefits.map((benefit) => (

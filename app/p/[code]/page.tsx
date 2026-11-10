@@ -45,7 +45,7 @@ async function QrRoute({ params }: { params: Promise<{ code: string }> }) {
         Formulario en blanco
       </h1>
       <p className="mt-2 max-w-xl text-sm leading-6 text-stone-600">
-        Este tag todavía no tiene mascota. Completá dueño y paciente para activarlo.
+        Este tag todavía no tiene mascota. Completá tutor y paciente para activarlo.
       </p>
       <div className="mt-8">
         <RegisterForm initialCode={code} lockedCode />

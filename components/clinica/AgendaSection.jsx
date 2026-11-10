@@ -20,6 +20,7 @@ import {
   crearCita,
   endOfDayISO,
   etiquetaEstado,
+  listarCitasPendientes,
   listarCitasRango,
   listarClientes,
   listarEspera,
@@ -35,6 +36,7 @@ export default function AgendaSection({ clinicaId }) {
   const [vets, setVets] = useState([]);
   const [citas, setCitas] = useState([]);
   const [espera, setEspera] = useState([]);
+  const [pendientes, setPendientes] = useState([]);
   const [pacientes, setPacientes] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [servicios, setServicios] = useState([]);
@@ -57,7 +59,7 @@ export default function AgendaSection({ clinicaId }) {
     setLoading(true);
     setError("");
     try {
-      const [v, c, e, p, cl, s] = await Promise.all([
+      const [v, c, e, pend, p, cl, s] = await Promise.all([
         listarVeterinarios(clinicaId),
         listarCitasRango(
           clinicaId,
@@ -66,6 +68,7 @@ export default function AgendaSection({ clinicaId }) {
           currentVet || undefined,
         ),
         listarEspera(clinicaId),
+        listarCitasPendientes(clinicaId),
         listarPacientes(clinicaId),
         listarClientes(clinicaId),
         listarServicios(clinicaId),
@@ -73,6 +76,7 @@ export default function AgendaSection({ clinicaId }) {
       setVets(v);
       setCitas(c);
       setEspera(e);
+      setPendientes(pend);
       setPacientes(p);
       setClientes(cl);
       setServicios(s);
@@ -193,6 +197,51 @@ export default function AgendaSection({ clinicaId }) {
         <p className="text-sm text-red-700" role="alert">
           {error}
         </p>
+      ) : null}
+
+      {pendientes.length > 0 ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <h3 className="font-semibold text-amber-950">
+            Turnos pendientes de confirmación ({pendientes.length})
+          </h3>
+          <p className="mt-1 text-sm text-amber-900/80">
+            Solicitados por tutores. Confirmá o rechazá para liberar o reservar el horario.
+          </p>
+          <ul className="mt-3 space-y-3">
+            {pendientes.map((cita) => (
+              <li
+                key={cita.id}
+                className="flex flex-wrap items-start justify-between gap-3 rounded-xl bg-white/70 p-3"
+              >
+                <div>
+                  <p className="font-medium text-aguara-ink">
+                    {formatDateTime(cita.inicio)} · {cita.clinica_pacientes?.nombre || "Sin paciente"}
+                  </p>
+                  <p className="text-sm text-stone-500">
+                    {cita.clinica_clientes?.nombre_completo || "Tutor"}
+                    {cita.motivo ? ` · ${cita.motivo}` : ""}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={primaryBtnClass}
+                    onClick={() => onEstado(cita.id, "confirmada")}
+                  >
+                    Confirmar
+                  </button>
+                  <button
+                    type="button"
+                    className={secondaryBtnClass}
+                    onClick={() => onEstado(cita.id, "cancelada")}
+                  >
+                    Rechazar
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       <div className="grid gap-5 lg:grid-cols-3">

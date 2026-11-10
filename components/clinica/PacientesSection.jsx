@@ -126,7 +126,7 @@ export default function PacientesSection({ clinicaId }) {
                     <p className="font-medium text-aguara-ink">{p.nombre}</p>
                     <p className="text-sm text-stone-500">
                       {p.especie}
-                      {p.raza ? ` · ${p.raza}` : ""} · Dueño:{" "}
+                      {p.raza ? ` · ${p.raza}` : ""} · Tutores:{" "}
                       {p.clinica_clientes?.nombre_completo || "—"}
                     </p>
                   </div>
@@ -156,7 +156,7 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [crearDueño, setCrearDueño] = useState(false);
+  const [crearTutor, setcrearTutor] = useState(false);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -164,7 +164,7 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
     setError("");
     try {
       let clienteId = form.cliente_id;
-      if (crearDueño) {
+      if (crearTutor) {
         const cliente = await crearCliente(clinicaId, {
           nombre_completo: form.nuevo_cliente_nombre,
           telefono: form.nuevo_cliente_telefono,
@@ -172,7 +172,7 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
         clienteId = cliente.id;
         await onClientCreated();
       }
-      if (!clienteId) throw new Error("Seleccioná o creá un dueño.");
+      if (!clienteId) throw new Error("Seleccioná o creá un tutor.");
       await crearPaciente(clinicaId, { ...form, cliente_id: clienteId });
       await onCreated();
     } catch (err) {
@@ -188,14 +188,14 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
       <label className="flex items-center gap-2 text-sm text-stone-700">
         <input
           type="checkbox"
-          checked={crearDueño}
-          onChange={(e) => setCrearDueño(e.target.checked)}
+          checked={crearTutor}
+          onChange={(e) => setcrearTutor(e.target.checked)}
         />
-        Crear dueño nuevo
+        Crear tutor nuevo
       </label>
-      {crearDueño ? (
+      {crearTutor ? (
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Nombre del dueño" id="np-dueno">
+          <Field label="Nombre del tutor" id="np-dueno">
             <input
               id="np-dueno"
               required
@@ -215,7 +215,7 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
           </Field>
         </div>
       ) : (
-        <Field label="Dueño" id="np-cliente">
+        <Field label="Tutor" id="np-cliente">
           <select
             id="np-cliente"
             required
@@ -365,7 +365,7 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
           {paciente.peso ? ` · ${paciente.peso} kg` : ""}
         </p>
         <p className="mt-3 text-sm text-stone-700">
-          Dueño: <strong>{paciente.clinica_clientes?.nombre_completo}</strong>
+          Tutor: <strong>{paciente.clinica_clientes?.nombre_completo}</strong>
           {paciente.clinica_clientes?.telefono
             ? ` · ${paciente.clinica_clientes.telefono}`
             : ""}
@@ -388,15 +388,15 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
                   {formatDateTime(c.fecha)}
                   {c.cerrada ? " · Cerrada" : " · Abierta"}
                 </p>
-                <p className="text-sm text-stone-600">{c.motivo || "Consulta"}</p>
+                <p className="text-sm text-stone-600">Motivo de consulta:{c.motivo || "Consulta"}</p>
                 {c.diagnostico ? (
-                  <p className="mt-1 text-sm text-stone-700">Dx: {c.diagnostico}</p>
+                  <p className="mt-1 text-sm text-stone-700">Diagnóstico: {c.diagnostico}</p>
                 ) : null}
                 {c.tratamiento ? (
-                  <p className="text-sm text-stone-700">Tx: {c.tratamiento}</p>
+                  <p className="text-sm text-stone-700">Tratamiento: {c.tratamiento}</p>
                 ) : null}
                 {c.medicacion ? (
-                  <p className="text-sm text-stone-700">Med: {c.medicacion}</p>
+                  <p className="text-sm text-stone-700">Medicación: {c.medicacion}</p>
                 ) : null}
               </li>
             ))}

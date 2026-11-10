@@ -88,6 +88,10 @@ drop policy if exists "clinicas_update_public" on public.clinicas;
 create policy "clinicas_update_public"
 on public.clinicas for update to public using (true) with check (true);
 
+drop policy if exists "clinicas_delete_public" on public.clinicas;
+create policy "clinicas_delete_public"
+on public.clinicas for delete to public using (true);
+
 drop policy if exists "clinica_servicios_all_public" on public.clinica_servicios;
 create policy "clinica_servicios_all_public"
 on public.clinica_servicios for all to public using (true) with check (true);
@@ -100,7 +104,7 @@ drop policy if exists "clinica_productos_all_public" on public.clinica_productos
 create policy "clinica_productos_all_public"
 on public.clinica_productos for all to public using (true) with check (true);
 
-grant select, insert, update on public.clinicas to anon, authenticated;
+grant select, insert, update, delete on public.clinicas to anon, authenticated;
 grant select, insert, update, delete on public.clinica_servicios to anon, authenticated;
 grant select, insert, update, delete on public.clinica_horarios to anon, authenticated;
 grant select, insert, update, delete on public.clinica_productos to anon, authenticated;

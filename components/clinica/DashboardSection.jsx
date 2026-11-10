@@ -8,6 +8,7 @@ import {
   etiquetaEstado,
   ingresosHoy,
   listarCitasHoy,
+  listarCitasPendientes,
   listarEspera,
   money,
 } from "@/lib/chapitas/clinicaOps";
@@ -18,6 +19,7 @@ export default function DashboardSection({ clinicaId, onNavigate }) {
   const [error, setError] = useState("");
   const [citas, setCitas] = useState([]);
   const [espera, setEspera] = useState([]);
+  const [pendientes, setPendientes] = useState([]);
   const [ingresos, setIngresos] = useState(0);
   const [alertas, setAlertas] = useState({ vacunas: [], desparasitaciones: [] });
   const [stockBajo, setStockBajo] = useState([]);
@@ -27,9 +29,10 @@ export default function DashboardSection({ clinicaId, onNavigate }) {
     setLoading(true);
     setError("");
     try {
-      const [citasHoy, esperaRows, ingreso, alerts, productos, horarios] = await Promise.all([
+      const [citasHoy, esperaRows, pend, ingreso, alerts, productos, horarios] = await Promise.all([
         listarCitasHoy(clinicaId),
         listarEspera(clinicaId),
+        listarCitasPendientes(clinicaId),
         ingresosHoy(clinicaId),
         alertasProximas(clinicaId),
         listarStock(clinicaId),
@@ -37,6 +40,7 @@ export default function DashboardSection({ clinicaId, onNavigate }) {
       ]);
       setCitas(citasHoy);
       setEspera(esperaRows.filter((c) => c.estado === "en_espera" || c.estado === "lista_espera"));
+      setPendientes(pend);
       setIngresos(ingreso);
       setAlertas(alerts);
       setStockBajo(productos.filter((p) => Number(p.stock) <= 3));
@@ -73,10 +77,27 @@ export default function DashboardSection({ clinicaId, onNavigate }) {
         </p>
       ) : null}
 
+      {pendientes.length > 0 ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-amber-950">
+                {pendientes.length} turno{pendientes.length === 1 ? "" : "s"} pendiente
+                {pendientes.length === 1 ? "" : "s"} de tutores
+              </p>
+              <p className="text-sm text-amber-900/80">Confirmalos desde la agenda.</p>
+            </div>
+            <button type="button" className={primaryBtnClass} onClick={() => onNavigate("agenda")}>
+              Revisar
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat title="Citas del día" value={String(citas.length)} hint={`${activas.length} activas`} />
+        <Stat title="Pendientes" value={String(pendientes.length)} hint="Por confirmar" />
         <Stat title="En espera" value={String(espera.length)} hint="Sala / lista" />
-        <Stat title="Ocupación" value={`${ocupacion}%`} hint={`${finalizadas} finalizadas`} />
         <Stat title="Ingresos hoy" value={money(ingresos)} hint={`${slotsHoy} franjas hoy`} />
       </div>
 

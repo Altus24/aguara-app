@@ -1,14 +1,38 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { Field, cardClass, fieldClass, primaryBtnClass } from "@/components/tutor/ui";
+import {
+  Field,
+  cardClass,
+  fieldClass,
+  primaryBtnClass,
+  secondaryBtnClass,
+} from "@/components/tutor/ui";
 import { useTutorAuth } from "@/context/TutorAuthContext";
-import { actualizarTutor, listarClinicas, obtenerTutor } from "@/lib/chapitas/tutorPortal";
+import {
+  aceptarCambioPerfilTutor,
+  actualizarTutor,
+  listarClinicas,
+  listarMascotasTutorCompletas,
+  listarSolicitudesPerfilTutor,
+  obtenerTutor,
+  rechazarCambioPerfilTutor,
+} from "@/lib/chapitas/tutorPortal";
 
-export default function PerfilSection({ tutor }) {
+const LABELS = {
+  nombre_completo: "Nombre",
+  telefono: "Teléfono",
+  telefono_secundario: "Tel. secundario",
+  direccion: "Dirección",
+};
+
+export default function PerfilSection({ tutor, onSolicitudesChange }) {
   const { refreshTutor } = useTutorAuth();
   const [clinicas, setClinicas] = useState([]);
+  const [tieneChapita, setTieneChapita] = useState(true);
+  const [solicitudes, setSolicitudes] = useState([]);
   const [form, setForm] = useState({
     nombre_completo: tutor.nombre_completo || "",
     telefono: tutor.telefono || "",
@@ -17,19 +41,30 @@ export default function PerfilSection({ tutor }) {
     clinica_preferida_id: tutor.clinica_preferida_id || "",
   });
   const [saving, setSaving] = useState(false);
+  const [resolvingId, setResolvingId] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  async function loadSolicitudes() {
+    const rows = await listarSolicitudesPerfilTutor(tutor.id, { soloPendientes: true });
+    setSolicitudes(rows);
+    onSolicitudesChange?.(rows);
+  }
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const [profile, clinics] = await Promise.all([
+        const [profile, clinics, pets, sols] = await Promise.all([
           obtenerTutor(tutor.id),
           listarClinicas(),
+          listarMascotasTutorCompletas(tutor.id, tutor.email),
+          listarSolicitudesPerfilTutor(tutor.id, { soloPendientes: true }),
         ]);
         if (cancelled) return;
         setClinicas(clinics);
+        setTieneChapita(pets.mascotas.some((m) => m.chapita_id));
+        setSolicitudes(sols);
         setForm({
           nombre_completo: profile.nombre_completo || "",
           telefono: profile.telefono || "",
@@ -67,12 +102,119 @@ export default function PerfilSection({ tutor }) {
     }
   }
 
+  async function resolverSolicitud(id, aceptar) {
+    setResolvingId(id);
+    setError("");
+    setMessage("");
+    try {
+      if (aceptar) {
+        const updated = await aceptarCambioPerfilTutor(tutor.id, id);
+        refreshTutor({ ...tutor, ...updated, email: tutor.email });
+        setForm((f) => ({
+          ...f,
+          nombre_completo: updated.nombre_completo || "",
+          telefono: updated.telefono || "",
+          telefono_secundario: updated.telefono_secundario || "",
+          direccion: updated.direccion || "",
+        }));
+        setMessage("Cambio aceptado. Tu perfil se actualizó.");
+      } else {
+        await rechazarCambioPerfilTutor(tutor.id, id);
+        setMessage("Cambio rechazado. Tus datos quedan como estaban.");
+      }
+      await loadSolicitudes();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo resolver la solicitud.");
+    } finally {
+      setResolvingId("");
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div>
         <h2 className="text-lg font-semibold text-aguara-ink">Perfil / Datos</h2>
         <p className="text-sm text-stone-500">Datos personales y sucursal de preferencia</p>
       </div>
+
+      {solicitudes.length > 0 ? (
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-aguara-ink">
+            Cambios propuestos por clínicas
+          </h3>
+          {solicitudes.map((sol) => {
+            const prev = sol.datos_anteriores || {};
+            const next = sol.datos_propuestos || {};
+            const keys = Object.keys(LABELS).filter(
+              (k) => String(prev[k] || "") !== String(next[k] || ""),
+            );
+            return (
+              <div
+                key={sol.id}
+                className="rounded-2xl border border-amber-200 bg-amber-50 p-4"
+              >
+                <p className="text-sm font-semibold text-amber-950">
+                  {sol.clinicas?.nombre || "Clínica"}
+                  {sol.clinicas?.ciudad ? ` · ${sol.clinicas.ciudad}` : ""}
+                </p>
+                <p className="mt-1 text-sm text-amber-900/80">
+                  Proponen actualizar tu información. Solo se aplica si aceptás.
+                </p>
+                <ul className="mt-3 space-y-1 text-sm text-amber-950">
+                  {keys.length === 0 ? (
+                    <li>Sin diferencias detectadas.</li>
+                  ) : (
+                    keys.map((k) => (
+                      <li key={k}>
+                        <strong>{LABELS[k]}:</strong> {prev[k] || "—"} → {next[k] || "—"}
+                      </li>
+                    ))
+                  )}
+                </ul>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={primaryBtnClass}
+                    disabled={Boolean(resolvingId)}
+                    onClick={() => resolverSolicitud(sol.id, true)}
+                  >
+                    {resolvingId === sol.id ? "…" : "Aceptar cambio"}
+                  </button>
+                  <button
+                    type="button"
+                    className={secondaryBtnClass}
+                    disabled={Boolean(resolvingId)}
+                    onClick={() => resolverSolicitud(sol.id, false)}
+                  >
+                    Rechazar
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {!tieneChapita ? (
+        <div className="rounded-2xl border border-aguara-orange/30 bg-aguara-cream/50 p-5">
+          <p className="text-sm font-semibold text-aguara-ink">Conseguí tu chapita QR Aguará</p>
+          <p className="mt-1 text-sm text-stone-600">
+            Podés sacar turnos igual, pero con el QR tu mascota queda identificada si se pierde y
+            vinculás su ficha a tu cuenta en segundos.
+          </p>
+          <Link href="/" className={`${primaryBtnClass} mt-4`}>
+            Activar / comprar chapita
+          </Link>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-stone-200 bg-white p-4 text-sm text-stone-600">
+          Tip: si todavía no tenés chapita física para otra mascota,{" "}
+          <Link href="/" className="font-medium text-aguara-orange underline">
+            activá una nueva
+          </Link>{" "}
+          y vincularla a tu cuenta.
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className={`${cardClass} space-y-4`}>
         <div className="grid gap-3 sm:grid-cols-2">

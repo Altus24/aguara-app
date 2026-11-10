@@ -36,7 +36,7 @@ export function Hero() {
             >
               el formulario en blanco
             </Link>{" "}
-            y registrá mascota y dueño.
+            y registrá mascota y tutor.
           </p>
         </div>
         <PhonePreview />

@@ -23,15 +23,32 @@ import {
   generateChapitaQrSvg,
 } from '@/lib/chapitas/chapitaQr';
 import { useAuth } from '@/context/AuthContext';
+import {
+  actualizarClinica,
+  crearClinica,
+  eliminarClinica,
+} from '@/lib/chapitas/clinicas';
 import AdminEditMascotaModal from './AdminEditMascotaModal';
 
 function isOrphanWebChapita(chapitaId) {
   return isDynamicChapitaId(String(chapitaId).trim().toLowerCase());
 }
 
+const EMPTY_CLINICA_FORM = {
+  nombre: '',
+  email: '',
+  telefono: '',
+  direccion: '',
+  ciudad: '',
+  provincia: 'Mendoza',
+  descripcion: '',
+};
+
 export default function AdminDashboard() {
   const { signOut } = useAuth();
   const [mascotas, setMascotas] = useState([]);
+  const [clinicas, setClinicas] = useState([]);
+  const [tutores, setTutores] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -40,10 +57,16 @@ export default function AdminDashboard() {
   const [creatingBatch, setCreatingBatch] = useState(false);
   const [zipProgress, setZipProgress] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [tab, setTab] = useState('chapitas');
+  const [registryQuery, setRegistryQuery] = useState('');
+  const [clinicaForm, setClinicaForm] = useState(EMPTY_CLINICA_FORM);
+  const [editingClinicaId, setEditingClinicaId] = useState(null);
+  const [showClinicaForm, setShowClinicaForm] = useState(false);
+  const [savingClinica, setSavingClinica] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [mascotasRes, chapitasRes, inventarioRes] = await Promise.all([
+    const [mascotasRes, chapitasRes, inventarioRes, clinicasRes, tutoresRes] = await Promise.all([
       supabase.from('mascotas').select('*').order('creado_en', { ascending: false }),
       supabase.from('chapitas').select('id'),
       supabase
@@ -51,6 +74,14 @@ export default function AdminDashboard() {
         .select('tirada_actual, max_id_numerico')
         .eq('id', 1)
         .maybeSingle(),
+      supabase
+        .from('clinicas')
+        .select('id, nombre, email, telefono, direccion, ciudad, provincia, creado_en')
+        .order('creado_en', { ascending: false }),
+      supabase
+        .from('tutores')
+        .select('id, nombre_completo, email, telefono, telefono_secundario, creado_en')
+        .order('creado_en', { ascending: false }),
     ]);
 
     if (mascotasRes.error || chapitasRes.error) {
@@ -76,6 +107,19 @@ export default function AdminDashboard() {
       }
       setMessage('');
     }
+
+    if (clinicasRes.error) {
+      setClinicas([]);
+    } else {
+      setClinicas(clinicasRes.data || []);
+    }
+
+    if (tutoresRes.error) {
+      setTutores([]);
+    } else {
+      setTutores(tutoresRes.data || []);
+    }
+
     setLoading(false);
   }, []);
 
@@ -112,6 +156,125 @@ export default function AdminDashboard() {
   const nextTirada = tiradaActual + 1;
   const nextRange = getTiradaIdRange(nextTirada);
   const canCreateBatch = tiradaActual < MAX_TIRADAS;
+
+  const mascotasPorTutor = useMemo(() => {
+    const counts = new Map();
+    for (const m of mascotas) {
+      if (!m.tutor_id) continue;
+      counts.set(m.tutor_id, (counts.get(m.tutor_id) || 0) + 1);
+    }
+    return counts;
+  }, [mascotas]);
+
+  const registryQ = registryQuery.trim().toLowerCase();
+  const clinicasFiltradas = useMemo(() => {
+    if (!registryQ) return clinicas;
+    return clinicas.filter(
+      (c) =>
+        c.nombre?.toLowerCase().includes(registryQ) ||
+        c.email?.toLowerCase().includes(registryQ) ||
+        c.telefono?.includes(registryQuery.trim()) ||
+        c.ciudad?.toLowerCase().includes(registryQ),
+    );
+  }, [clinicas, registryQ, registryQuery]);
+
+  const tutoresFiltrados = useMemo(() => {
+    if (!registryQ) return tutores;
+    return tutores.filter(
+      (t) =>
+        t.nombre_completo?.toLowerCase().includes(registryQ) ||
+        t.email?.toLowerCase().includes(registryQ) ||
+        t.telefono?.includes(registryQuery.trim()),
+    );
+  }, [tutores, registryQ, registryQuery]);
+
+  const TABS = [
+    { id: 'chapitas', label: 'Chapitas' },
+    { id: 'clinicas', label: `Clínicas (${clinicas.length})` },
+    { id: 'tutores', label: `Tutores (${tutores.length})` },
+  ];
+
+  function openNuevaClinica() {
+    setEditingClinicaId(null);
+    setClinicaForm(EMPTY_CLINICA_FORM);
+    setShowClinicaForm(true);
+    setMessage('');
+    setSuccessMessage('');
+  }
+
+  function openEditarClinica(clinica) {
+    setEditingClinicaId(clinica.id);
+    setClinicaForm({
+      nombre: clinica.nombre || '',
+      email: clinica.email || '',
+      telefono: clinica.telefono || '',
+      direccion: clinica.direccion || '',
+      ciudad: clinica.ciudad || '',
+      provincia: clinica.provincia || 'Mendoza',
+      descripcion: clinica.descripcion || '',
+    });
+    setShowClinicaForm(true);
+    setMessage('');
+    setSuccessMessage('');
+  }
+
+  async function handleSaveClinica(event) {
+    event.preventDefault();
+    setSavingClinica(true);
+    setMessage('');
+    setSuccessMessage('');
+    try {
+      if (editingClinicaId) {
+        const updated = await actualizarClinica(editingClinicaId, {
+          nombre: clinicaForm.nombre,
+          email: clinicaForm.email,
+          telefono: clinicaForm.telefono,
+          direccion: clinicaForm.direccion,
+          ciudad: clinicaForm.ciudad,
+          provincia: clinicaForm.provincia,
+          descripcion: clinicaForm.descripcion || null,
+        });
+        setClinicas((prev) =>
+          prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
+        );
+        setSuccessMessage(`Clínica “${updated.nombre}” actualizada.`);
+      } else {
+        const created = await crearClinica(clinicaForm);
+        setClinicas((prev) => [created, ...prev]);
+        setSuccessMessage(`Clínica “${created.nombre}” creada.`);
+      }
+      setShowClinicaForm(false);
+      setEditingClinicaId(null);
+      setClinicaForm(EMPTY_CLINICA_FORM);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'No se pudo guardar la clínica.');
+    } finally {
+      setSavingClinica(false);
+    }
+  }
+
+  async function handleDeleteClinica(clinica) {
+    if (
+      !window.confirm(
+        `¿Eliminar la clínica “${clinica.nombre}”? Se borrarán también sus datos operativos vinculados.`,
+      )
+    ) {
+      return;
+    }
+    setMessage('');
+    setSuccessMessage('');
+    try {
+      await eliminarClinica(clinica.id);
+      setClinicas((prev) => prev.filter((item) => item.id !== clinica.id));
+      if (editingClinicaId === clinica.id) {
+        setShowClinicaForm(false);
+        setEditingClinicaId(null);
+      }
+      setSuccessMessage(`Clínica “${clinica.nombre}” eliminada.`);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'No se pudo eliminar la clínica.');
+    }
+  }
 
   const handleDeleteMascota = async (id) => {
     if (!window.confirm(`¿Eliminar la ficha de la chapita ${formatChapitaIdLabel(id)}?`)) return;
@@ -200,6 +363,301 @@ export default function AdminDashboard() {
 
       {!loading && (
         <>
+          <div className="mb-6 flex flex-wrap gap-2">
+            {TABS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  setTab(item.id);
+                  setRegistryQuery('');
+                }}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                  tab === item.id
+                    ? 'bg-blue-700 text-white'
+                    : 'bg-blue-50 text-blue-800 hover:bg-blue-100'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          {tab === 'clinicas' ? (
+            <div className="mb-10 space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-blue-700">Clínicas registradas</h2>
+                  <p className="text-sm text-gray-600">
+                    {clinicas.length} clínica{clinicas.length === 1 ? '' : 's'} en total
+                  </p>
+                </div>
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                  <input
+                    type="search"
+                    value={registryQuery}
+                    onChange={(e) => setRegistryQuery(e.target.value)}
+                    placeholder="Buscar por nombre, email, ciudad…"
+                    className="w-full max-w-md rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={openNuevaClinica}
+                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  >
+                    Nueva clínica
+                  </button>
+                </div>
+              </div>
+
+              {showClinicaForm ? (
+                <form
+                  onSubmit={handleSaveClinica}
+                  className="space-y-3 rounded-lg bg-white p-5 shadow-md"
+                >
+                  <h3 className="font-semibold text-blue-800">
+                    {editingClinicaId ? 'Editar clínica' : 'Agregar clínica'}
+                  </h3>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block text-sm">
+                      <span className="mb-1 block font-medium text-gray-700">Nombre</span>
+                      <input
+                        required
+                        minLength={2}
+                        value={clinicaForm.nombre}
+                        onChange={(e) =>
+                          setClinicaForm((f) => ({ ...f, nombre: e.target.value }))
+                        }
+                        className="w-full rounded-md border border-gray-300 px-3 py-2"
+                      />
+                    </label>
+                    <label className="block text-sm">
+                      <span className="mb-1 block font-medium text-gray-700">Email</span>
+                      <input
+                        required
+                        type="email"
+                        value={clinicaForm.email}
+                        onChange={(e) =>
+                          setClinicaForm((f) => ({ ...f, email: e.target.value }))
+                        }
+                        className="w-full rounded-md border border-gray-300 px-3 py-2"
+                      />
+                    </label>
+                    <label className="block text-sm">
+                      <span className="mb-1 block font-medium text-gray-700">Teléfono</span>
+                      <input
+                        required
+                        minLength={6}
+                        value={clinicaForm.telefono}
+                        onChange={(e) =>
+                          setClinicaForm((f) => ({ ...f, telefono: e.target.value }))
+                        }
+                        className="w-full rounded-md border border-gray-300 px-3 py-2"
+                      />
+                    </label>
+                    <label className="block text-sm">
+                      <span className="mb-1 block font-medium text-gray-700">Dirección</span>
+                      <input
+                        required
+                        value={clinicaForm.direccion}
+                        onChange={(e) =>
+                          setClinicaForm((f) => ({ ...f, direccion: e.target.value }))
+                        }
+                        className="w-full rounded-md border border-gray-300 px-3 py-2"
+                      />
+                    </label>
+                    <label className="block text-sm">
+                      <span className="mb-1 block font-medium text-gray-700">Ciudad</span>
+                      <input
+                        required
+                        value={clinicaForm.ciudad}
+                        onChange={(e) =>
+                          setClinicaForm((f) => ({ ...f, ciudad: e.target.value }))
+                        }
+                        className="w-full rounded-md border border-gray-300 px-3 py-2"
+                      />
+                    </label>
+                    <label className="block text-sm">
+                      <span className="mb-1 block font-medium text-gray-700">Provincia</span>
+                      <input
+                        value={clinicaForm.provincia}
+                        onChange={(e) =>
+                          setClinicaForm((f) => ({ ...f, provincia: e.target.value }))
+                        }
+                        className="w-full rounded-md border border-gray-300 px-3 py-2"
+                      />
+                    </label>
+                    <label className="block text-sm sm:col-span-2">
+                      <span className="mb-1 block font-medium text-gray-700">
+                        Descripción (opcional)
+                      </span>
+                      <textarea
+                        rows={2}
+                        value={clinicaForm.descripcion}
+                        onChange={(e) =>
+                          setClinicaForm((f) => ({ ...f, descripcion: e.target.value }))
+                        }
+                        className="w-full rounded-md border border-gray-300 px-3 py-2"
+                      />
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Por ahora la contraseña de ingreso de la clínica es el mismo email.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="submit"
+                      disabled={savingClinica}
+                      className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                    >
+                      {savingClinica
+                        ? 'Guardando…'
+                        : editingClinicaId
+                          ? 'Guardar cambios'
+                          : 'Crear clínica'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowClinicaForm(false);
+                        setEditingClinicaId(null);
+                      }}
+                      className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </form>
+              ) : null}
+
+              <div className="overflow-x-auto rounded-lg bg-white shadow-md">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-blue-50 text-left">
+                    <tr>
+                      <th className="p-3">Nombre</th>
+                      <th className="p-3">Email</th>
+                      <th className="p-3">Teléfono</th>
+                      <th className="p-3">Ubicación</th>
+                      <th className="p-3">Alta</th>
+                      <th className="p-3">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {clinicasFiltradas.map((c) => (
+                      <tr key={c.id} className="border-t">
+                        <td className="p-3 font-medium">{c.nombre}</td>
+                        <td className="p-3">{c.email}</td>
+                        <td className="p-3">{c.telefono}</td>
+                        <td className="p-3">
+                          {[c.ciudad, c.provincia].filter(Boolean).join(', ') || '—'}
+                          {c.direccion ? (
+                            <span className="block text-xs text-gray-500">{c.direccion}</span>
+                          ) : null}
+                        </td>
+                        <td className="p-3 whitespace-nowrap">
+                          {c.creado_en
+                            ? new Date(c.creado_en).toLocaleString('es-AR')
+                            : '—'}
+                        </td>
+                        <td className="p-3 space-x-2 whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => openEditarClinica(c)}
+                            className="text-blue-600 underline"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteClinica(c)}
+                            className="text-red-600 underline"
+                          >
+                            Eliminar
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {clinicasFiltradas.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="p-4 text-center text-gray-500">
+                          {clinicas.length === 0
+                            ? 'Todavía no hay clínicas. Usá “Nueva clínica” para crear una.'
+                            : 'Ninguna clínica coincide con la búsqueda.'}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
+          {tab === 'tutores' ? (
+            <div className="mb-10">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-blue-700">Tutores registrados</h2>
+                  <p className="text-sm text-gray-600">
+                    {tutores.length} tutor{tutores.length === 1 ? '' : 'es'} en total
+                  </p>
+                </div>
+                <input
+                  type="search"
+                  value={registryQuery}
+                  onChange={(e) => setRegistryQuery(e.target.value)}
+                  placeholder="Buscar por nombre, email, teléfono…"
+                  className="w-full max-w-md rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              <div className="overflow-x-auto rounded-lg bg-white shadow-md">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-blue-50 text-left">
+                    <tr>
+                      <th className="p-3">Nombre</th>
+                      <th className="p-3">Email</th>
+                      <th className="p-3">Teléfono</th>
+                      <th className="p-3">Mascotas</th>
+                      <th className="p-3">Alta</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tutoresFiltrados.map((t) => (
+                      <tr key={t.id} className="border-t">
+                        <td className="p-3 font-medium">{t.nombre_completo}</td>
+                        <td className="p-3">{t.email}</td>
+                        <td className="p-3">
+                          {t.telefono}
+                          {t.telefono_secundario ? (
+                            <span className="block text-xs text-gray-500">
+                              {t.telefono_secundario}
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="p-3">{mascotasPorTutor.get(t.id) || 0}</td>
+                        <td className="p-3 whitespace-nowrap">
+                          {t.creado_en
+                            ? new Date(t.creado_en).toLocaleString('es-AR')
+                            : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                    {tutoresFiltrados.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="p-4 text-center text-gray-500">
+                          {tutores.length === 0
+                            ? 'Todavía no hay tutores registrados.'
+                            : 'Ningún tutor coincide con la búsqueda.'}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
+          {tab === 'chapitas' ? (
+            <>
           <div className="mb-8 rounded-lg bg-white p-6 shadow-md">
             <h2 className="text-xl font-semibold text-blue-700 mb-3">Inventario de chapitas</h2>
             <p className="mb-4 text-sm text-gray-600">
@@ -472,6 +930,8 @@ export default function AdminDashboard() {
               </table>
             </div>
           </div>
+            </>
+          ) : null}
         </>
       )}
     </section>

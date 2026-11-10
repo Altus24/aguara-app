@@ -10,6 +10,10 @@ import MascotasSection from "@/components/tutor/MascotasSection";
 import PerfilSection from "@/components/tutor/PerfilSection";
 import RecordatoriosSection from "@/components/tutor/RecordatoriosSection";
 import { useTutorAuth } from "@/context/TutorAuthContext";
+import {
+  listarNotificacionesTutor,
+  listarSolicitudesPerfilTutor,
+} from "@/lib/chapitas/tutorPortal";
 
 const NAV = [
   { id: "mascotas", label: "Mis mascotas" },
@@ -23,12 +27,36 @@ export default function TutorPanel() {
   const { tutor, isAuthenticated, authLoading, signOut } = useTutorAuth();
   const router = useRouter();
   const [tab, setTab] = useState("mascotas");
+  const [pendientesPerfil, setPendientesPerfil] = useState(0);
+  const [notifMensaje, setNotifMensaje] = useState("");
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       router.replace("/tutor/login?from=/tutor");
     }
   }, [authLoading, isAuthenticated, router]);
+
+  async function loadAlerts() {
+    if (!tutor?.id) return;
+    try {
+      const [sols, notifs] = await Promise.all([
+        listarSolicitudesPerfilTutor(tutor.id, { soloPendientes: true }),
+        listarNotificacionesTutor(tutor.id, { soloNoLeidas: true }),
+      ]);
+      setPendientesPerfil(sols.length);
+      setNotifMensaje(notifs[0]?.mensaje || sols[0]?.clinicas?.nombre || "");
+    } catch {
+      setPendientesPerfil(0);
+      setNotifMensaje("");
+    }
+  }
+
+  useEffect(() => {
+    loadAlerts();
+    const timer = setInterval(loadAlerts, 30000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tutor?.id, tab]);
 
   if (authLoading || !isAuthenticated || !tutor) {
     return (
@@ -60,6 +88,30 @@ export default function TutorPanel() {
         </button>
       </div>
 
+      {pendientesPerfil > 0 ? (
+        <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-amber-950">
+                {pendientesPerfil} cambio{pendientesPerfil === 1 ? "" : "s"} de datos pendiente
+                {pendientesPerfil === 1 ? "" : "s"}
+              </p>
+              <p className="mt-1 text-sm text-amber-900/80">
+                {notifMensaje ||
+                  "Una clínica propone actualizar tu perfil. Revisá y aceptá o rechazá."}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="rounded-full bg-aguara-orange px-4 py-2 text-sm font-medium text-white"
+              onClick={() => setTab("perfil")}
+            >
+              Revisar en perfil
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <nav className="mt-8 flex gap-2 overflow-x-auto border-b border-stone-200 pb-3">
         {NAV.map((item) => (
           <button
@@ -73,6 +125,11 @@ export default function TutorPanel() {
             }`}
           >
             {item.label}
+            {item.id === "perfil" && pendientesPerfil > 0 ? (
+              <span className="ml-2 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] text-white">
+                {pendientesPerfil}
+              </span>
+            ) : null}
           </button>
         ))}
       </nav>
@@ -82,7 +139,9 @@ export default function TutorPanel() {
         {tab === "agenda" ? <AgendaSection tutor={tutor} /> : null}
         {tab === "historial" ? <HistorialSection tutor={tutor} /> : null}
         {tab === "recordatorios" ? <RecordatoriosSection tutor={tutor} /> : null}
-        {tab === "perfil" ? <PerfilSection tutor={tutor} /> : null}
+        {tab === "perfil" ? (
+          <PerfilSection tutor={tutor} onSolicitudesChange={loadAlerts} />
+        ) : null}
       </div>
 
       <p className="mt-10 text-center">

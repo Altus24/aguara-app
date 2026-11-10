@@ -18,10 +18,16 @@ Solo re-ejecutá algo si falta una migración puntual. Orden original:
 12. `12_veterinarios_firma.sql` ← matrícula + firma digital de veterinarios
 13. `13_tutor_portal.sql` ← portal tutor (perfil, citas pendientes, recordatorios)
 14. `14_mascota_perfil_clinico.sql` ← peso/edad + tratamientos (ficha privada del tutor)
+15. `15_clinicas_admin_delete.sql` ← borrado de clínicas desde superadmin
+16. `16_clinica_notificaciones.sql` ← inbox de turnos pendientes para la clínica
+17. `17_veterinario_horarios.sql` ← horarios de atención por veterinario
+18. `18_tutor_cambio_perfil.sql` ← clínica propone cambios; el tutor debe aceptar
+19. `19_consultas_actualizado.sql` ← `actualizado_en` en historias clínicas
 
 No corras `01` a ciegas si las tablas `mascotas` / `chapitas` / `admin_users` ya existen.
-En proyectos ya en uso, ejecutá al menos el `07`, el `09`, el `10`–`14` para el formulario
-ampliado, clínicas y portal de tutores.
+En proyectos ya en uso, ejecutá al menos el `07`, el `09`, el `10`–`19` para el formulario
+ampliado, clínicas, portal de tutores, notificaciones, horarios por vet, cambios de perfil
+y fecha de modificación de HC.
 
 ## Superadmin
 

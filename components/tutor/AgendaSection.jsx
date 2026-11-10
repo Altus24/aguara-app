@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   EstadoBadge,
@@ -14,26 +14,24 @@ import {
 import { etiquetaEstado } from "@/lib/chapitas/clinicaOps";
 import {
   listarCitasTutor,
-  listarClinicas,
+  listarClinicasParaTurnos,
+  listarHorariosYOcupacion,
   listarMascotasTutorCompletas,
-  reprogramarCitaTutor,
-  solicitarCitaTutor,
+  listarVeterinariosParaTurnos,
+  solicitarTurnoTutor,
 } from "@/lib/chapitas/tutorPortal";
 
 export default function AgendaSection({ tutor }) {
   const [proximas, setProximas] = useState([]);
   const [pasadas, setPasadas] = useState([]);
   const [mascotas, setMascotas] = useState([]);
-  const [clientes, setClientes] = useState([]);
   const [clinicas, setClinicas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
 
-  const clinicaPref = clinicas.find((c) => c.id === tutor.clinica_preferida_id);
-  const permiteSolicitar =
-    clinicaPref?.permite_citas_tutor !== false && clinicas.some((c) => c.permite_citas_tutor !== false);
+  const permiteSolicitar = clinicas.length > 0;
 
   async function reload() {
     setLoading(true);
@@ -42,11 +40,10 @@ export default function AgendaSection({ tutor }) {
       const [citas, pets, clinics] = await Promise.all([
         listarCitasTutor(tutor.id, tutor.email),
         listarMascotasTutorCompletas(tutor.id, tutor.email),
-        listarClinicas(),
+        listarClinicasParaTurnos(),
       ]);
       setProximas(citas.proximas);
       setPasadas(citas.pasadas);
-      setClientes(citas.clientes);
       setMascotas(pets.mascotas);
       setClinicas(clinics);
     } catch (err) {
@@ -59,16 +56,18 @@ export default function AgendaSection({ tutor }) {
   useEffect(() => {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tutor.id, tutor.email, tutor.clinica_preferida_id]);
+  }, [tutor.id, tutor.email]);
 
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-aguara-ink">Mis citas</h2>
-          <p className="text-sm text-stone-500">Próximas, historial y solicitudes</p>
+          <p className="text-sm text-stone-500">
+            Pedí turno en cualquier clínica del sistema, dentro de sus horarios
+          </p>
         </div>
-        {permiteSolicitar ? (
+        {permiteSolicitar && mascotas.length > 0 ? (
           <button
             type="button"
             className={primaryBtnClass}
@@ -77,15 +76,22 @@ export default function AgendaSection({ tutor }) {
               setShowForm(true);
             }}
           >
-            Solicitar cita
+            Sacar turno
           </button>
         ) : null}
       </div>
 
-      {!permiteSolicitar ? (
+      {!permiteSolicitar && !loading ? (
         <p className="text-sm text-stone-500">
-          Tu clínica aún no habilitó solicitudes online. Elegí una sucursal en Perfil o contactala
-          directamente.
+          Todavía no hay clínicas disponibles para turnos online.
+        </p>
+      ) : null}
+
+      {permiteSolicitar && !loading && mascotas.length === 0 ? (
+        <p className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-600">
+          Para sacar un turno primero vinculá o registrá una mascota en{" "}
+          <span className="font-medium text-aguara-ink">Mis mascotas</span>. Si todavía no tenés
+          chapita QR, activá una desde el inicio.
         </p>
       ) : null}
 
@@ -93,8 +99,7 @@ export default function AgendaSection({ tutor }) {
         <CitaForm
           tutor={tutor}
           mascotas={mascotas}
-          clientes={clientes}
-          clinicas={clinicas.filter((c) => c.permite_citas_tutor !== false)}
+          clinicas={clinicas}
           initial={editing}
           onCancel={() => {
             setShowForm(false);
@@ -133,12 +138,21 @@ export default function AgendaSection({ tutor }) {
                     <p className="text-sm text-stone-500">
                       {cita.clinicas?.nombre || "Clínica"}
                       {cita.clinicas?.ciudad ? ` · ${cita.clinicas.ciudad}` : ""}
+                      {cita.clinica_veterinarios?.nombre
+                        ? ` · ${cita.clinica_veterinarios.nombre}`
+                        : ""}
                       {cita.motivo ? ` · ${cita.motivo}` : ""}
                     </p>
+                    {cita.estado === "pendiente" ? (
+                      <p className="mt-1 text-xs text-amber-700">
+                        Esperando confirmación de la clínica
+                      </p>
+                    ) : null}
                   </div>
                   <EstadoBadge estado={cita.estado} label={etiquetaEstado(cita.estado)} />
                 </div>
-                {permiteSolicitar && ["pendiente", "confirmada", "lista_espera"].includes(cita.estado) ? (
+                {permiteSolicitar &&
+                ["pendiente", "confirmada", "lista_espera"].includes(cita.estado) ? (
                   <button
                     type="button"
                     className="mt-2 text-sm text-aguara-orange underline"
@@ -173,6 +187,9 @@ export default function AgendaSection({ tutor }) {
                   </p>
                   <p className="text-sm text-stone-500">
                     {cita.clinicas?.nombre || "Clínica"}
+                    {cita.clinica_veterinarios?.nombre
+                      ? ` · ${cita.clinica_veterinarios.nombre}`
+                      : ""}
                     {cita.motivo ? ` · ${cita.motivo}` : ""}
                   </p>
                 </div>
@@ -186,69 +203,151 @@ export default function AgendaSection({ tutor }) {
   );
 }
 
-function toLocalInputValue(iso) {
+function toDateInput(iso) {
   if (!iso) return "";
   const d = new Date(iso);
   const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function CitaForm({ tutor, mascotas, clientes, clinicas, initial, onCancel, onSaved }) {
+function toTimeLabel(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function CitaForm({ tutor, mascotas, clinicas, initial, onCancel, onSaved }) {
   const defaultClinica = tutor.clinica_preferida_id || clinicas[0]?.id || "";
   const [form, setForm] = useState({
     clinica_id: initial?.clinica_id || defaultClinica,
+    veterinario_id: initial?.veterinario_id || "",
     paciente_key: "",
-    inicio: toLocalInputValue(initial?.inicio) || "",
+    fecha: toDateInput(initial?.inicio) || "",
+    hora: toTimeLabel(initial?.inicio) || "",
     motivo: initial?.motivo || "",
     notas: initial?.notas || "",
   });
+  const [vets, setVets] = useState([]);
+  const [loadingVets, setLoadingVets] = useState(false);
+  const [slots, setSlots] = useState([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const clinicaSeleccionada = useMemo(
+    () => clinicas.find((c) => c.id === form.clinica_id),
+    [clinicas, form.clinica_id],
+  );
 
   useEffect(() => {
     if (initial?.paciente_id) {
       const m = mascotas.find((x) => x.paciente_clinico_id === initial.paciente_id);
       if (m) setForm((f) => ({ ...f, paciente_key: m.key }));
+    } else if (mascotas.length === 1) {
+      setForm((f) => ({ ...f, paciente_key: mascotas[0].key }));
     }
   }, [initial, mascotas]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadVets() {
+      if (!form.clinica_id) {
+        setVets([]);
+        return;
+      }
+      setLoadingVets(true);
+      try {
+        const rows = await listarVeterinariosParaTurnos(form.clinica_id);
+        if (cancelled) return;
+        setVets(rows);
+        setForm((f) => {
+          if (f.veterinario_id && rows.some((v) => v.id === f.veterinario_id)) return f;
+          return { ...f, veterinario_id: rows[0]?.id || "", hora: "" };
+        });
+      } catch (err) {
+        if (!cancelled) {
+          setVets([]);
+          setError(err instanceof Error ? err.message : "No se pudieron cargar veterinarios.");
+        }
+      } finally {
+        if (!cancelled) setLoadingVets(false);
+      }
+    }
+    loadVets();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.clinica_id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSlots() {
+      if (!form.clinica_id || !form.veterinario_id || !form.fecha) {
+        setSlots([]);
+        return;
+      }
+      setLoadingSlots(true);
+      setError("");
+      try {
+        const data = await listarHorariosYOcupacion(
+          form.clinica_id,
+          form.fecha,
+          form.veterinario_id,
+        );
+        if (cancelled) return;
+        const available = [...data.slots];
+        if (
+          initial?.id &&
+          initial.inicio &&
+          toDateInput(initial.inicio) === form.fecha &&
+          (!initial.veterinario_id || initial.veterinario_id === form.veterinario_id)
+        ) {
+          const own = toTimeLabel(initial.inicio);
+          if (own && !available.includes(own)) available.push(own);
+          available.sort();
+        }
+        setSlots(available);
+        if (form.hora && !available.includes(form.hora)) {
+          setForm((f) => ({ ...f, hora: "" }));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setSlots([]);
+          setError(
+            err instanceof Error
+              ? err.message
+              : "No se pudieron cargar los horarios de ese veterinario.",
+          );
+        }
+      } finally {
+        if (!cancelled) setLoadingSlots(false);
+      }
+    }
+    loadSlots();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.clinica_id, form.veterinario_id, form.fecha, initial?.id, initial?.inicio]);
 
   async function handleSubmit(event) {
     event.preventDefault();
     setSaving(true);
     setError("");
     try {
-      if (!form.clinica_id) throw new Error("Elegí una sucursal.");
-      if (!form.inicio) throw new Error("Indicá fecha y hora preferida.");
       const mascota = mascotas.find((m) => m.key === form.paciente_key);
-      const cliente =
-        clientes.find((c) => c.clinica_id === form.clinica_id) ||
-        clientes.find((c) => c.id === mascota?.cliente_id) ||
-        clientes[0];
-
-      if (!cliente && !mascota?.cliente_id) {
-        throw new Error(
-          "Todavía no estás vinculado a esa clínica. Pedile que te registre como cliente o cargá tu email en su ficha.",
-        );
-      }
-
-      const inicioISO = new Date(form.inicio).toISOString();
-      if (initial?.id) {
-        await reprogramarCitaTutor(initial.id, {
-          inicio: inicioISO,
-          motivo: form.motivo,
-          notas: form.notas,
-        });
-      } else {
-        await solicitarCitaTutor({
-          clinica_id: form.clinica_id,
-          paciente_id: mascota?.paciente_clinico_id || null,
-          cliente_id: mascota?.cliente_id || cliente.id,
-          inicio: inicioISO,
-          motivo: form.motivo,
-          notas: form.notas,
-          estado: "pendiente",
-        });
-      }
+      if (!mascota) throw new Error("Elegí una mascota.");
+      await solicitarTurnoTutor({
+        tutor,
+        clinicaId: form.clinica_id,
+        veterinarioId: form.veterinario_id,
+        mascota,
+        fecha: form.fecha,
+        hora: form.hora,
+        motivo: form.motivo,
+        notas: form.notas,
+        citaId: initial?.id || null,
+      });
       await onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo enviar la solicitud.");
@@ -260,16 +359,26 @@ function CitaForm({ tutor, mascotas, clientes, clinicas, initial, onCancel, onSa
   return (
     <form onSubmit={handleSubmit} className={`${cardClass} space-y-3`}>
       <h3 className="font-semibold text-aguara-ink">
-        {initial?.id ? "Reprogramar cita" : "Solicitar cita"}
+        {initial?.id ? "Reprogramar turno" : "Sacar turno"}
       </h3>
+      <p className="text-sm text-stone-500">
+        Elegí veterinario y un horario de su agenda. La clínica deberá confirmarlo.
+      </p>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Sucursal" id="t-cita-cli">
+        <Field label="Clínica" id="t-cita-cli">
           <select
             id="t-cita-cli"
             required
             className={fieldClass}
             value={form.clinica_id}
-            onChange={(e) => setForm((f) => ({ ...f, clinica_id: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({
+                ...f,
+                clinica_id: e.target.value,
+                veterinario_id: "",
+                hora: "",
+              }))
+            }
             disabled={Boolean(initial?.id)}
           >
             <option value="">Seleccionar…</option>
@@ -281,9 +390,38 @@ function CitaForm({ tutor, mascotas, clientes, clinicas, initial, onCancel, onSa
             ))}
           </select>
         </Field>
+        <Field label="Veterinario" id="t-cita-vet">
+          <select
+            id="t-cita-vet"
+            required
+            className={fieldClass}
+            value={form.veterinario_id}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, veterinario_id: e.target.value, hora: "" }))
+            }
+            disabled={!form.clinica_id || loadingVets}
+          >
+            <option value="">
+              {loadingVets
+                ? "Cargando…"
+                : !form.clinica_id
+                  ? "Elegí una clínica"
+                  : vets.length
+                    ? "Seleccionar…"
+                    : "Sin veterinarios"}
+            </option>
+            {vets.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.nombre}
+                {v.especialidad ? ` · ${v.especialidad}` : ""}
+              </option>
+            ))}
+          </select>
+        </Field>
         <Field label="Mascota" id="t-cita-masc">
           <select
             id="t-cita-masc"
+            required
             className={fieldClass}
             value={form.paciente_key}
             onChange={(e) => setForm((f) => ({ ...f, paciente_key: e.target.value }))}
@@ -296,25 +434,60 @@ function CitaForm({ tutor, mascotas, clientes, clinicas, initial, onCancel, onSa
             ))}
           </select>
         </Field>
-        <Field label="Fecha y hora preferida" id="t-cita-ini">
+        <Field label="Fecha" id="t-cita-fecha">
           <input
-            id="t-cita-ini"
-            type="datetime-local"
+            id="t-cita-fecha"
+            type="date"
             required
+            min={new Date().toISOString().slice(0, 10)}
             className={fieldClass}
-            value={form.inicio}
-            onChange={(e) => setForm((f) => ({ ...f, inicio: e.target.value }))}
+            value={form.fecha}
+            onChange={(e) => setForm((f) => ({ ...f, fecha: e.target.value, hora: "" }))}
           />
         </Field>
-        <Field label="Motivo" id="t-cita-mot">
+        <Field label="Horario disponible" id="t-cita-hora" className="sm:col-span-2">
+          <select
+            id="t-cita-hora"
+            required
+            className={fieldClass}
+            value={form.hora}
+            onChange={(e) => setForm((f) => ({ ...f, hora: e.target.value }))}
+            disabled={!form.veterinario_id || !form.fecha || loadingSlots}
+          >
+            <option value="">
+              {loadingSlots
+                ? "Cargando horarios…"
+                : !form.veterinario_id
+                  ? "Elegí un veterinario"
+                  : !form.fecha
+                    ? "Elegí una fecha"
+                    : slots.length
+                      ? "Seleccionar…"
+                      : "Sin horarios ese día para este veterinario"}
+            </option>
+            {slots.map((slot) => (
+              <option key={slot} value={slot}>
+                {slot}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Motivo" id="t-cita-mot" className="sm:col-span-2">
           <input
             id="t-cita-mot"
             className={fieldClass}
             value={form.motivo}
             onChange={(e) => setForm((f) => ({ ...f, motivo: e.target.value }))}
+            placeholder="Control, vacunación, consulta…"
           />
         </Field>
       </div>
+      {clinicaSeleccionada?.direccion ? (
+        <p className="text-xs text-stone-500">
+          {clinicaSeleccionada.direccion}
+          {clinicaSeleccionada.telefono ? ` · ${clinicaSeleccionada.telefono}` : ""}
+        </p>
+      ) : null}
       <Field label="Notas" id="t-cita-notas">
         <textarea
           id="t-cita-notas"
@@ -326,7 +499,7 @@ function CitaForm({ tutor, mascotas, clientes, clinicas, initial, onCancel, onSa
       </Field>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       <div className="flex gap-2">
-        <button type="submit" disabled={saving} className={primaryBtnClass}>
+        <button type="submit" disabled={saving || loadingSlots || loadingVets} className={primaryBtnClass}>
           {saving ? "Enviando…" : initial?.id ? "Pedir reprogramación" : "Enviar solicitud"}
         </button>
         <button type="button" className={secondaryBtnClass} onClick={onCancel}>

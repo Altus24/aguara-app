@@ -10,7 +10,7 @@ import { isSupabaseConfigured } from "@/lib/env";
 
 export const metadata: Metadata = {
   title: "Registrar mascota",
-  description: "Formulario en blanco del QR para registrar mascota y dueño en Aguará App.",
+  description: "Formulario en blanco del QR para registrar mascota y tutor en Aguará App.",
 };
 
 async function RegisterContent({
@@ -49,7 +49,7 @@ export default function RegistrarPage({
           Formulario en blanco
         </h1>
         <p className="mt-2 max-w-xl text-sm leading-6 text-stone-600">
-          Completá dueño y mascota. Los datos se guardan en Supabase y el mismo QR abre el perfil
+          Completá tutor y mascota. Los datos se guardan en Supabase y el mismo QR abre el perfil
           público.
         </p>
 

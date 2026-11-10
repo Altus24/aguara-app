@@ -48,7 +48,7 @@ export function PhonePreview() {
           </div>
 
           <div className="rounded-xl bg-stone-50 px-3 py-3 text-sm">
-            <p className="font-medium text-aguara-ink">Dueño: Laura Gómez</p>
+            <p className="font-medium text-aguara-ink">Tutor: Laura Gómez</p>
             <p className="mt-1 flex items-center gap-1.5 text-stone-500">
               <Phone className="size-3.5" aria-hidden="true" />
               +54 9 11 5555-1212

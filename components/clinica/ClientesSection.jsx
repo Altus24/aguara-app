@@ -18,11 +18,13 @@ import {
   listarConsultas,
   listarPacientesDeCliente,
   listarPagos,
+  listarSolicitudesPerfilClinica,
   money,
   obtenerCliente,
+  proponerOActualizarDatosTutor,
 } from "@/lib/chapitas/clinicaOps";
 
-export default function ClientesSection({ clinicaId }) {
+export default function ClientesSection({ clinicaId, clinicaNombre }) {
   const [q, setQ] = useState("");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +53,7 @@ export default function ClientesSection({ clinicaId }) {
     return (
       <FichaCliente
         clinicaId={clinicaId}
+        clinicaNombre={clinicaNombre}
         clienteId={selectedId}
         onBack={() => setSelectedId(null)}
       />
@@ -61,7 +64,7 @@ export default function ClientesSection({ clinicaId }) {
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-aguara-ink">Clientes (dueños)</h2>
+          <h2 className="text-lg font-semibold text-aguara-ink">Clientes (tutor)</h2>
           <p className="text-sm text-stone-500">Contacto, mascotas y pagos</p>
         </div>
         <button type="button" className={primaryBtnClass} onClick={() => setShowForm((v) => !v)}>
@@ -211,13 +214,25 @@ function NuevoClienteForm({ clinicaId, onCreated }) {
   );
 }
 
-function FichaCliente({ clinicaId, clienteId, onBack }) {
+function FichaCliente({ clinicaId, clinicaNombre, clienteId, onBack }) {
   const [cliente, setCliente] = useState(null);
   const [mascotas, setMascotas] = useState([]);
   const [pagos, setPagos] = useState([]);
   const [visitas, setVisitas] = useState([]);
+  const [pendientes, setPendientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({
+    nombre_completo: "",
+    email: "",
+    telefono: "",
+    telefono_secundario: "",
+    direccion: "",
+    notas: "",
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
   const [pagoForm, setPagoForm] = useState({
     monto: "",
     concepto: "Consulta",
@@ -230,14 +245,24 @@ function FichaCliente({ clinicaId, clienteId, onBack }) {
     setLoading(true);
     setError("");
     try {
-      const [c, m, p] = await Promise.all([
+      const [c, m, p, sols] = await Promise.all([
         obtenerCliente(clienteId),
         listarPacientesDeCliente(clienteId),
         listarPagos(clinicaId, { clienteId }),
+        listarSolicitudesPerfilClinica(clinicaId, { soloPendientes: true }),
       ]);
       setCliente(c);
       setMascotas(m);
       setPagos(p);
+      setPendientes((sols || []).filter((s) => s.cliente_id === clienteId));
+      setForm({
+        nombre_completo: c.nombre_completo || "",
+        email: c.email || "",
+        telefono: c.telefono || "",
+        telefono_secundario: c.telefono_secundario || "",
+        direccion: c.direccion || "",
+        notas: c.notas || "",
+      });
       const allConsultas = await Promise.all(
         m.map((mascota) => listarConsultas(clinicaId, { pacienteId: mascota.id })),
       );
@@ -254,9 +279,40 @@ function FichaCliente({ clinicaId, clienteId, onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clinicaId, clienteId]);
 
+  async function handleSavePerfil(event) {
+    event.preventDefault();
+    setSavingEdit(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await proponerOActualizarDatosTutor({
+        clinicaId,
+        clinicaNombre,
+        clienteId,
+        payload: form,
+      });
+      if (result.modo === "pendiente_tutor") {
+        setMessage(
+          "Se envió la propuesta al tutor. Los datos se actualizarán cuando acepte la notificación.",
+        );
+      } else if (result.modo === "inmediato") {
+        setMessage("Datos del cliente actualizados.");
+      } else {
+        setMessage("Sin cambios en el perfil (notas guardadas si correspondía).");
+      }
+      setEditing(false);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar.");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
   if (loading) return <p className="text-sm text-stone-500">Cargando cliente…</p>;
-  if (error) return <p className="text-sm text-red-700">{error}</p>;
-  if (!cliente) return null;
+  if (!cliente) {
+    return error ? <p className="text-sm text-red-700">{error}</p> : null;
+  }
 
   return (
     <div className="space-y-5">
@@ -265,15 +321,124 @@ function FichaCliente({ clinicaId, clienteId, onBack }) {
       </button>
 
       <div className={cardClass}>
-        <h2 className="text-2xl font-semibold text-aguara-ink">{cliente.nombre_completo}</h2>
-        <p className="mt-2 text-sm text-stone-600">
-          {cliente.telefono}
-          {cliente.telefono_secundario ? ` · ${cliente.telefono_secundario}` : ""}
-        </p>
-        {cliente.email ? <p className="text-sm text-stone-600">{cliente.email}</p> : null}
-        {cliente.direccion ? (
-          <p className="mt-1 text-sm text-stone-500">{cliente.direccion}</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-semibold text-aguara-ink">{cliente.nombre_completo}</h2>
+            <p className="mt-2 text-sm text-stone-600">
+              {cliente.telefono}
+              {cliente.telefono_secundario ? ` · ${cliente.telefono_secundario}` : ""}
+            </p>
+            {cliente.email ? <p className="text-sm text-stone-600">{cliente.email}</p> : null}
+            {cliente.direccion ? (
+              <p className="mt-1 text-sm text-stone-500">{cliente.direccion}</p>
+            ) : null}
+            {cliente.tutor_id ? (
+              <p className="mt-2 text-xs font-medium text-emerald-700">
+                Vinculado a cuenta tutor Aguará
+              </p>
+            ) : (
+              <p className="mt-2 text-xs text-stone-500">
+                Sin cuenta tutor: los cambios se aplican solo en la clínica.
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            className={secondaryBtnClass}
+            onClick={() => {
+              setEditing((v) => !v);
+              setMessage("");
+              setError("");
+            }}
+          >
+            {editing ? "Cancelar edición" : "Editar datos"}
+          </button>
+        </div>
+
+        {pendientes.length > 0 ? (
+          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+            Hay {pendientes.length} cambio{pendientes.length === 1 ? "" : "s"} esperando aceptación
+            del tutor.
+          </p>
         ) : null}
+
+        {editing ? (
+          <form onSubmit={handleSavePerfil} className="mt-4 space-y-3 border-t border-stone-100 pt-4">
+            <p className="text-sm text-stone-500">
+              Si el tutor tiene cuenta Aguará, deberá aceptar el cambio antes de que se aplique a su
+              perfil.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Nombre completo" id="edit-nom">
+                <input
+                  id="edit-nom"
+                  required
+                  className={fieldClass}
+                  value={form.nombre_completo}
+                  onChange={(e) => setForm((f) => ({ ...f, nombre_completo: e.target.value }))}
+                />
+              </Field>
+              <Field label="Teléfono" id="edit-tel">
+                <input
+                  id="edit-tel"
+                  required
+                  className={fieldClass}
+                  value={form.telefono}
+                  onChange={(e) => setForm((f) => ({ ...f, telefono: e.target.value }))}
+                />
+              </Field>
+              <Field label="Email" id="edit-email">
+                <input
+                  id="edit-email"
+                  type="email"
+                  className={`${fieldClass} bg-stone-50 text-stone-500`}
+                  value={form.email}
+                  disabled
+                  title="El email es el acceso del tutor y no se modifica desde acá"
+                />
+              </Field>
+              <Field label="Tel. secundario" id="edit-tel2">
+                <input
+                  id="edit-tel2"
+                  className={fieldClass}
+                  value={form.telefono_secundario}
+                  onChange={(e) => setForm((f) => ({ ...f, telefono_secundario: e.target.value }))}
+                />
+              </Field>
+              <Field label="Dirección" id="edit-dir" className="sm:col-span-2">
+                <input
+                  id="edit-dir"
+                  className={fieldClass}
+                  value={form.direccion}
+                  onChange={(e) => setForm((f) => ({ ...f, direccion: e.target.value }))}
+                />
+              </Field>
+              <Field label="Notas internas (solo clínica)" id="edit-notas" className="sm:col-span-2">
+                <textarea
+                  id="edit-notas"
+                  rows={2}
+                  className={fieldClass}
+                  value={form.notas}
+                  onChange={(e) => setForm((f) => ({ ...f, notas: e.target.value }))}
+                />
+              </Field>
+            </div>
+            <button type="submit" disabled={savingEdit} className={primaryBtnClass}>
+              {savingEdit
+                ? "Guardando…"
+                : cliente.tutor_id
+                  ? "Enviar propuesta al tutor"
+                  : "Guardar datos"}
+            </button>
+          </form>
+        ) : null}
+
+        {error ? (
+          <p className="mt-3 text-sm text-red-700" role="alert">
+            {error}
+          </p>
+        ) : null}
+        {message ? <p className="mt-3 text-sm text-emerald-700">{message}</p> : null}
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
