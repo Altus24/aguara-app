@@ -37,6 +37,11 @@ export function LandingFooter() {
           <p className="text-sm font-medium text-aguara-ink">Acceso</p>
           <ul className="mt-4 space-y-2 text-sm text-stone-600">
             <li>
+              <Link href="/tutor/login" className="hover:text-aguara-ink">
+                Ingreso tutores
+              </Link>
+            </li>
+            <li>
               <Link href="/admin" className="hover:text-aguara-ink">
                 Panel admin
               </Link>

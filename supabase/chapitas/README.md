@@ -11,9 +11,12 @@ Solo re-ejecutá algo si falta una migración puntual. Orden original:
 5. `05_chapita_tirada.sql`
 6. `06_chapita_numeros.sql`
 7. `07_mascotas_ficha_extendida.sql` ← campos de tutor/animal + bucket de fotos
+8. `08_reset_tiradas.sql` ← solo si querés limpiar inventario
+9. `09_tutores.sql` ← tutores reutilizables + `tutor_id` en mascotas
 
 No corras `01` a ciegas si las tablas `mascotas` / `chapitas` / `admin_users` ya existen.
-En proyectos ya en uso, ejecutá al menos el `07` para habilitar el formulario ampliado.
+En proyectos ya en uso, ejecutá al menos el `07` y el `09` para el formulario ampliado y el
+vínculo tutor ↔ varias mascotas.
 
 ## Superadmin
 

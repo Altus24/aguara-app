@@ -14,6 +14,7 @@ import {
   extractChapitaIdFromRoute,
 } from '@/lib/chapitas/supabaseClient';
 import ActivarChapitaForm from './ActivarChapitaForm';
+import { listarMascotasDelTutor } from '@/lib/chapitas/tutores';
 
 function FichaMascota() {
   const params = useParams();
@@ -22,6 +23,7 @@ function FichaMascota() {
   const chapitaId = normalizeChapitaId(rawId);
 
   const [mascota, setMascota] = useState(null);
+  const [otrasMascotas, setOtrasMascotas] = useState([]);
   const [canActivate, setCanActivate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
@@ -63,9 +65,17 @@ function FichaMascota() {
 
       if (data) {
         setCanActivate(false);
+        if (data.tutor_id) {
+          const siblings = await listarMascotasDelTutor(data.tutor_id);
+          setOtrasMascotas(siblings.filter((item) => item.id !== data.id));
+        } else {
+          setOtrasMascotas([]);
+        }
         setLoading(false);
         return;
       }
+
+      setOtrasMascotas([]);
 
       if (isFirstTiradaFreeActivation(chapitaId)) {
         setCanActivate(true);
@@ -299,6 +309,44 @@ function FichaMascota() {
             )}
           </>
         )}
+
+        {otrasMascotas.length > 0 ? (
+          <>
+            <hr className="my-6 border-gray-200" />
+            <h2 className="text-xl font-semibold text-orange-700 mb-3">
+              Otras mascotas del mismo tutor
+            </h2>
+            <ul className="space-y-2">
+              {otrasMascotas.map((item) => (
+                <li key={item.id}>
+                  <Link
+                    href={`/mascota/${item.id}`}
+                    className="flex items-center gap-3 rounded-xl border border-stone-200 px-3 py-2 text-sm text-stone-700 hover:border-orange-300 hover:bg-orange-50"
+                  >
+                    {item.foto_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.foto_url}
+                        alt=""
+                        className="size-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      <span className="grid size-10 place-items-center rounded-full bg-orange-50 font-medium text-orange-700">
+                        {item.nombre_mascota?.charAt(0)?.toUpperCase() || '·'}
+                      </span>
+                    )}
+                    <span>
+                      <span className="font-medium text-stone-900">{item.nombre_mascota}</span>
+                      {item.especie ? (
+                        <span className="block text-stone-500">{item.especie}</span>
+                      ) : null}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
       </div>
 
       <p className="mt-8 text-center">

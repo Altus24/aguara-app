@@ -58,11 +58,11 @@ export function Benefits() {
             <div className="max-w-xl">
               <p className="text-sm font-medium text-aguara-cream">Registro por QR</p>
               <h3 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
-                Escaneás el tag y completás el formulario en blanco.
+                Escaneás el tag y registrás tutor + mascota.
               </h3>
               <p className="mt-3 text-sm leading-6 text-white/70">
-                Guardamos tutor y mascota en Supabase. Después, ese mismo QR abre el perfil
-                público y la ficha clínica.
+                Los datos quedan en la app. Si ya tenés un tutor cargado, lo buscás y linkeás la
+                nueva mascota sin duplicar el contacto.
               </p>
             </div>
             <Link href="/mascota/T1-001" className={`${primaryButtonClass} shrink-0`}>

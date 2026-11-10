@@ -18,6 +18,9 @@ export function LandingHeader() {
           <a href="#beneficios" className="transition hover:text-aguara-ink">
             Beneficios
           </a>
+          <Link href="/tutor/login" className="transition hover:text-aguara-ink">
+            Ingresar
+          </Link>
           <Link href="/admin" className="transition hover:text-aguara-ink">
             Admin
           </Link>

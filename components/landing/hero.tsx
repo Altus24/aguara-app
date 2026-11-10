@@ -17,8 +17,8 @@ export function Hero() {
             Identificación inteligente para tu mascota
           </h1>
           <p className="mt-5 max-w-lg text-pretty text-lg leading-8 text-stone-600">
-            Un QR en el collar conecta a quien la encuentre con su perfil, el tutor y la ficha
-            médica. Sin cuotas mensuales y con registro en segundos.
+            Escaneás el QR, registrás tutor y mascota en la app, y podés vincular varias mascotas
+            al mismo tutor. Sin cuotas mensuales.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Link href="/mascota/T1-001" className={primaryButtonClass}>
