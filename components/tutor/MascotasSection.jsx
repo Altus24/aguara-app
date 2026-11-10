@@ -61,7 +61,7 @@ export default function MascotasSection({ tutor }) {
         ) : (
           <ul className="grid gap-4 sm:grid-cols-2">
             {mascotas.map((m) => {
-              const href = m.chapita_id ? `/mascota/${m.chapita_id}` : null;
+              const href = m.chapita_id ? `/tutor/mascota/${m.chapita_id}` : null;
               const content = (
                 <>
                   {m.foto_url ? (
