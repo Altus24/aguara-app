@@ -12,6 +12,7 @@ import RecordatoriosSection from "@/components/tutor/RecordatoriosSection";
 import { useTutorAuth } from "@/context/TutorAuthContext";
 import {
   listarNotificacionesTutor,
+  listarSolicitudesCompartirTutor,
   listarSolicitudesPerfilTutor,
 } from "@/lib/chapitas/tutorPortal";
 
@@ -39,12 +40,18 @@ export default function TutorPanel() {
   async function loadAlerts() {
     if (!tutor?.id) return;
     try {
-      const [sols, notifs] = await Promise.all([
+      const [sols, shares, notifs] = await Promise.all([
         listarSolicitudesPerfilTutor(tutor.id, { soloPendientes: true }),
+        listarSolicitudesCompartirTutor(tutor.id, { soloPendientes: true }),
         listarNotificacionesTutor(tutor.id, { soloNoLeidas: true }),
       ]);
-      setPendientesPerfil(sols.length);
-      setNotifMensaje(notifs[0]?.mensaje || sols[0]?.clinicas?.nombre || "");
+      setPendientesPerfil(sols.length + shares.length);
+      setNotifMensaje(
+        notifs[0]?.mensaje ||
+          shares[0]?.clinicas?.nombre ||
+          sols[0]?.clinicas?.nombre ||
+          "",
+      );
     } catch {
       setPendientesPerfil(0);
       setNotifMensaje("");
@@ -93,12 +100,12 @@ export default function TutorPanel() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-amber-950">
-                {pendientesPerfil} cambio{pendientesPerfil === 1 ? "" : "s"} de datos pendiente
+                {pendientesPerfil} solicitud{pendientesPerfil === 1 ? "" : "es"} pendiente
                 {pendientesPerfil === 1 ? "" : "s"}
               </p>
               <p className="mt-1 text-sm text-amber-900/80">
                 {notifMensaje ||
-                  "Una clínica propone actualizar tu perfil. Revisá y aceptá o rechazá."}
+                  "Hay pedidos de clínicas (perfil o cambios de datos). Revisá en Perfil."}
               </p>
             </div>
             <button

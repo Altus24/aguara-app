@@ -10,7 +10,17 @@ import {
   actualizarDatosBasicosMascota,
   cargarPerfilClinicoMascota,
 } from "@/lib/chapitas/mascotaPerfil";
-import { cardClass, fieldClass, primaryBtnClass, secondaryBtnClass } from "@/components/tutor/ui";
+import {
+  crearVacunaTutor,
+  eliminarVacunaTutor,
+} from "@/lib/chapitas/tutorPortal";
+import {
+  Field,
+  cardClass,
+  fieldClass,
+  primaryBtnClass,
+  secondaryBtnClass,
+} from "@/components/tutor/ui";
 
 function formatDate(value) {
   if (!value) return "—";
@@ -244,25 +254,15 @@ export default function TutorMascotaPerfil() {
           )}
         </section>
 
-        <section className={cardClass}>
-          <h2 className="text-lg font-semibold text-aguara-ink">Vacunas</h2>
-          {perfil.vacunas.length === 0 ? (
-            <p className="mt-2 text-sm text-stone-500">Sin vacunas cargadas por la clínica.</p>
-          ) : (
-            <ul className="mt-3 space-y-2 text-sm">
-              {perfil.vacunas.map((v) => (
-                <li key={v.id} className="rounded-xl bg-aguara-cream/40 px-3 py-2">
-                  <strong>{v.nombre}</strong> · aplicada {formatDate(v.fecha)}
-                  {v.proxima_fecha ? (
-                    <span className="block text-aguara-orange">
-                      Próxima: {formatDate(v.proxima_fecha)}
-                    </span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <VacunasPerfilSection
+          tutor={tutor}
+          perfil={perfil}
+          chapitaId={chapitaId}
+          onChanged={async () => {
+            const next = await cargarPerfilClinicoMascota(chapitaId);
+            setPerfil(next);
+          }}
+        />
 
         <section className={cardClass}>
           <h2 className="text-lg font-semibold text-aguara-ink">Historial de consultas</h2>
@@ -333,6 +333,127 @@ export default function TutorMascotaPerfil() {
           )}
         </section>
       </div>
+    </section>
+  );
+}
+
+function VacunasPerfilSection({ tutor, perfil, chapitaId, onChanged }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [form, setForm] = useState({
+    nombre: "",
+    fecha: new Date().toISOString().slice(0, 10),
+  });
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (!tutor?.id) return;
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      await crearVacunaTutor(tutor.id, {
+        mascota_id: chapitaId,
+        paciente_id: perfil.pacienteIds?.[0] || null,
+        nombre: form.nombre,
+        fecha: form.fecha,
+      });
+      setForm({
+        nombre: "",
+        fecha: new Date().toISOString().slice(0, 10),
+      });
+      setMessage("Vacuna agregada.");
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar la vacuna.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className={cardClass}>
+      <h2 className="text-lg font-semibold text-aguara-ink">Vacunas</h2>
+      <p className="mt-1 text-sm text-stone-500">Cargá acá el nombre y la fecha de aplicación.</p>
+
+      <form onSubmit={handleSubmit} className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+        <Field label="Nombre de la vacuna" id="perf-vac-nom">
+          <input
+            id="perf-vac-nom"
+            required
+            className={fieldClass}
+            value={form.nombre}
+            onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
+            placeholder="Antirrábica, séxtuple…"
+          />
+        </Field>
+        <Field label="Fecha" id="perf-vac-fecha">
+          <input
+            id="perf-vac-fecha"
+            type="date"
+            required
+            className={fieldClass}
+            value={form.fecha}
+            onChange={(e) => setForm((f) => ({ ...f, fecha: e.target.value }))}
+          />
+        </Field>
+        <div className="flex items-end">
+          <button type="submit" disabled={saving} className={primaryBtnClass}>
+            {saving ? "…" : "Agregar"}
+          </button>
+        </div>
+      </form>
+
+      {error ? (
+        <p className="mt-2 text-sm text-red-700" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {message ? <p className="mt-2 text-sm text-emerald-700">{message}</p> : null}
+
+      {perfil.vacunas.length === 0 ? (
+        <p className="mt-4 text-sm text-stone-500">Todavía no hay vacunas registradas.</p>
+      ) : (
+        <ul className="mt-4 space-y-2 text-sm">
+          {perfil.vacunas.map((v) => (
+            <li
+              key={`${v.origen || "clinica"}-${v.id}`}
+              className="flex flex-wrap items-start justify-between gap-2 rounded-xl bg-aguara-cream/40 px-3 py-2"
+            >
+              <div>
+                <strong>{v.nombre}</strong> · {formatDate(v.fecha)}
+                {v.origen === "tutor" ? (
+                  <span className="ml-1 text-xs text-aguara-orange">(vos)</span>
+                ) : (
+                  <span className="ml-1 text-xs text-stone-500">(clínica)</span>
+                )}
+                {v.proxima_fecha ? (
+                  <span className="block text-aguara-orange">
+                    Próxima: {formatDate(v.proxima_fecha)}
+                  </span>
+                ) : null}
+              </div>
+              {v.origen === "tutor" && tutor?.id ? (
+                <button
+                  type="button"
+                  className="text-xs text-stone-500 underline"
+                  onClick={async () => {
+                    try {
+                      await eliminarVacunaTutor(tutor.id, v.id);
+                      await onChanged();
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "No se pudo eliminar.");
+                    }
+                  }}
+                >
+                  Quitar
+                </button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

@@ -23,11 +23,13 @@ Solo re-ejecutá algo si falta una migración puntual. Orden original:
 17. `17_veterinario_horarios.sql` ← horarios de atención por veterinario
 18. `18_tutor_cambio_perfil.sql` ← clínica propone cambios; el tutor debe aceptar
 19. `19_consultas_actualizado.sql` ← `actualizado_en` en historias clínicas
+20. `20_tutor_vacunas.sql` ← vacunas cargadas manualmente por el tutor
+21. `21_tutor_compartir_clinica.sql` ← clínicas piden ver perfil; el tutor acepta
 
 No corras `01` a ciegas si las tablas `mascotas` / `chapitas` / `admin_users` ya existen.
-En proyectos ya en uso, ejecutá al menos el `07`, el `09`, el `10`–`19` para el formulario
-ampliado, clínicas, portal de tutores, notificaciones, horarios por vet, cambios de perfil
-y fecha de modificación de HC.
+En proyectos ya en uso, ejecutá al menos el `07`, el `09`, el `10`–`21` para el formulario
+ampliado, clínicas, portal de tutores, notificaciones, horarios por vet, cambios de perfil,
+fecha de modificación de HC, vacunas del tutor y compartir perfil.
 
 ## Superadmin
 

@@ -10,6 +10,7 @@ import ConfigSection from "@/components/clinica/ConfigSection";
 import DashboardSection from "@/components/clinica/DashboardSection";
 import HistoriasSection from "@/components/clinica/HistoriasSection";
 import PacientesSection from "@/components/clinica/PacientesSection";
+import TutoresDirectorySection from "@/components/clinica/TutoresDirectorySection";
 import { useClinicAuth } from "@/context/ClinicAuthContext";
 import {
   listarCitasPendientes,
@@ -19,6 +20,7 @@ import {
 
 const NAV = [
   { id: "dashboard", label: "Dashboard" },
+  { id: "tutores", label: "Tutores" },
   { id: "pacientes", label: "Pacientes" },
   { id: "agenda", label: "Agenda" },
   { id: "historias", label: "Historias" },
@@ -167,6 +169,9 @@ export default function ClinicaPanel() {
       <div className="mt-6">
         {tab === "dashboard" ? (
           <DashboardSection clinicaId={clinica.id} onNavigate={setTab} />
+        ) : null}
+        {tab === "tutores" ? (
+          <TutoresDirectorySection clinicaId={clinica.id} clinicaNombre={clinica.nombre} />
         ) : null}
         {tab === "pacientes" ? <PacientesSection clinicaId={clinica.id} /> : null}
         {tab === "agenda" ? <AgendaSection clinicaId={clinica.id} /> : null}

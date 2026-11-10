@@ -6,6 +6,7 @@ import {
   cardClass,
   Field,
   fieldClass,
+  formatDate,
   formatDateTime,
   primaryBtnClass,
   secondaryBtnClass,
@@ -18,10 +19,14 @@ import {
   crearDesparasitacion,
   crearRecordatorio,
   crearVacuna,
+  listarArchivos,
   listarConsultas,
+  listarDesparasitaciones,
   listarPacientes,
+  listarVacunasPacienteCompletas,
   listarVeterinarios,
   obtenerConsulta,
+  obtenerPaciente,
 } from "@/lib/chapitas/clinicaOps";
 import { crearTratamiento } from "@/lib/chapitas/mascotaPerfil";
 
@@ -114,12 +119,8 @@ export default function HistoriasSection({ clinicaId }) {
           <ul className="divide-y divide-stone-100">
             {consultas.map((c) => (
               <li key={c.id}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedId(c.id)}
-                  className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-stone-50"
-                >
-                  <div>
+                <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+                  <div className="min-w-0 flex-1">
                     <p className="font-medium text-aguara-ink">
                       {c.clinica_pacientes?.nombre || "Paciente"} · {formatDateTime(c.fecha)}
                     </p>
@@ -132,8 +133,14 @@ export default function HistoriasSection({ clinicaId }) {
                       {formatDateTime(c.actualizado_en || c.cerrado_en || c.creado_en || c.fecha)}
                     </p>
                   </div>
-                  <span className="text-sm text-aguara-orange">Abrir</span>
-                </button>
+                  <button
+                    type="button"
+                    className={secondaryBtnClass}
+                    onClick={() => setSelectedId(c.id)}
+                  >
+                    Ver
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -171,21 +178,25 @@ function ConsultaForm({ clinicaId, pacientes, vets, onSaved, onCancel, initial }
         cliente_id: paciente?.cliente_id || null,
       };
       if (initial?.id) {
-        await actualizarConsulta(initial.id, {
-          motivo: payload.motivo?.trim() || null,
-          anamnesis: payload.anamnesis?.trim() || null,
-          examen_fisico: payload.examen_fisico?.trim() || null,
-          diagnostico: payload.diagnostico?.trim() || null,
-          tratamiento: payload.tratamiento?.trim() || null,
-          medicacion: payload.medicacion?.trim() || null,
-          peso: payload.peso === "" || payload.peso == null ? null : Number(payload.peso),
-          temperatura:
-            payload.temperatura === "" || payload.temperatura == null
-              ? null
-              : Number(payload.temperatura),
-          observaciones: payload.observaciones?.trim() || null,
-          veterinario_id: payload.veterinario_id || null,
-        });
+        await actualizarConsulta(
+          initial.id,
+          {
+            motivo: payload.motivo?.trim() || null,
+            anamnesis: payload.anamnesis?.trim() || null,
+            examen_fisico: payload.examen_fisico?.trim() || null,
+            diagnostico: payload.diagnostico?.trim() || null,
+            tratamiento: payload.tratamiento?.trim() || null,
+            medicacion: payload.medicacion?.trim() || null,
+            peso: payload.peso === "" || payload.peso == null ? null : Number(payload.peso),
+            temperatura:
+              payload.temperatura === "" || payload.temperatura == null
+                ? null
+                : Number(payload.temperatura),
+            observaciones: payload.observaciones?.trim() || null,
+            veterinario_id: payload.veterinario_id || null,
+          },
+          { clinicaId },
+        );
       } else {
         await crearConsulta(clinicaId, payload);
       }
@@ -341,8 +352,12 @@ function ConsultaForm({ clinicaId, pacientes, vets, onSaved, onCancel, initial }
 
 function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
   const [consulta, setConsulta] = useState(null);
+  const [paciente, setPaciente] = useState(null);
   const [editing, setEditing] = useState(false);
   const [pacientes, setPacientes] = useState([]);
+  const [vacunas, setVacunas] = useState([]);
+  const [desparas, setDesparas] = useState([]);
+  const [archivos, setArchivos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [firmaVetId, setFirmaVetId] = useState("");
@@ -368,13 +383,26 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
     setLoading(true);
     setError("");
     try {
-      const [c, p] = await Promise.all([
+      const [c, pList] = await Promise.all([
         obtenerConsulta(consultaId),
         listarPacientes(clinicaId),
       ]);
       setConsulta(c);
-      setPacientes(p);
+      setPacientes(pList);
       setFirmaVetId(c.veterinario_id || "");
+
+      if (c.paciente_id) {
+        const pac = await obtenerPaciente(c.paciente_id);
+        const [vacunasFull, despRows, arch] = await Promise.all([
+          listarVacunasPacienteCompletas(pac),
+          listarDesparasitaciones(c.paciente_id),
+          listarArchivos(c.paciente_id),
+        ]);
+        setPaciente(pac);
+        setVacunas(vacunasFull);
+        setDesparas(despRows);
+        setArchivos(arch);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar la consulta.");
     } finally {
@@ -411,14 +439,15 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
   return (
     <div className="space-y-5">
       <button type="button" className={secondaryBtnClass} onClick={onBack}>
-        ← Volver
+        ← Volver al listado
       </button>
 
       <div className={cardClass}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-xl font-semibold text-aguara-ink">
-              {consulta.clinica_pacientes?.nombre}
+            <p className="text-sm font-medium text-aguara-orange">Vista completa · Historia clínica</p>
+            <h2 className="mt-1 text-xl font-semibold text-aguara-ink">
+              {consulta.clinica_pacientes?.nombre || paciente?.nombre || "Paciente"}
             </h2>
             <p className="text-sm text-stone-500">
               Fecha de consulta: {formatDateTime(consulta.fecha)}
@@ -431,18 +460,57 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
             </p>
           </div>
           <div className="flex gap-2">
-            <button type="button" className={secondaryBtnClass} onClick={() => setEditing(true)}>
-              Editar historia
-            </button>
+            {consulta.clinica_id === clinicaId ? (
+              <button type="button" className={secondaryBtnClass} onClick={() => setEditing(true)}>
+                Editar historia
+              </button>
+            ) : (
+              <p className="text-xs text-amber-800">
+                Historia de otra clínica ({consulta.clinicas?.nombre || "—"}). Solo lectura.
+              </p>
+            )}
           </div>
         </div>
-        {consulta.cerrada ? (
+        {consulta.clinica_id === clinicaId && consulta.cerrada ? (
           <p className="mt-3 text-xs text-amber-800">
             Esta consulta está cerrada/firmada. Podés editar el contenido; la firma original se
             conserva.
           </p>
         ) : null}
+
+        {paciente ? (
+          <div className="mt-4 rounded-xl bg-stone-50 px-3 py-3 text-sm">
+            <p className="font-medium text-aguara-ink">Datos del paciente</p>
+            <p className="mt-1 text-stone-600">
+              {paciente.especie}
+              {paciente.raza ? ` · ${paciente.raza}` : ""}
+              {paciente.sexo ? ` · ${paciente.sexo}` : ""}
+              {paciente.peso != null ? ` · ${paciente.peso} kg` : ""}
+            </p>
+            <p className="text-stone-600">
+              Tutor: {paciente.clinica_clientes?.nombre_completo || "—"}
+              {paciente.clinica_clientes?.telefono
+                ? ` · ${paciente.clinica_clientes.telefono}`
+                : ""}
+            </p>
+            {paciente.alergias ? (
+              <p className="mt-1 text-amber-800">Alergias: {paciente.alergias}</p>
+            ) : null}
+            {paciente.chip || paciente.chapita_codigo || paciente.mascota_chapita_id ? (
+              <p className="mt-1 text-stone-500">
+                {paciente.chip ? `Chip: ${paciente.chip}` : ""}
+                {paciente.mascota_chapita_id || paciente.chapita_codigo
+                  ? `${paciente.chip ? " · " : ""}Chapita: ${
+                      paciente.mascota_chapita_id || paciente.chapita_codigo
+                    }`
+                  : ""}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+          <Item label="Estado" value={consulta.cerrada ? "Cerrada" : "Abierta"} />
           <Item label="Motivo" value={consulta.motivo} />
           <Item
             label="Veterinario"
@@ -461,20 +529,74 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
           <Item label="Diagnóstico" value={consulta.diagnostico} wide />
           <Item label="Tratamiento" value={consulta.tratamiento} />
           <Item label="Medicación" value={consulta.medicacion} />
-          <Item label="Peso" value={consulta.peso ? `${consulta.peso} kg` : null} />
+          <Item label="Peso" value={consulta.peso != null ? `${consulta.peso} kg` : null} />
           <Item
             label="Temperatura"
-            value={consulta.temperatura ? `${consulta.temperatura} °C` : null}
+            value={consulta.temperatura != null ? `${consulta.temperatura} °C` : null}
           />
           <Item label="Observaciones" value={consulta.observaciones} wide />
+          <Item label="Creada" value={formatDateTime(consulta.creado_en)} />
           <Item
             label="Última modificación"
             value={formatDateTime(
               consulta.actualizado_en || consulta.cerrado_en || consulta.creado_en || consulta.fecha,
             )}
-            wide
           />
         </dl>
+
+        <div className="mt-5 grid gap-4 border-t border-stone-100 pt-4 lg:grid-cols-3">
+          <div>
+            <h3 className="text-sm font-semibold text-aguara-ink">Vacunas del paciente</h3>
+            {vacunas.length === 0 ? (
+              <p className="mt-2 text-sm text-stone-500">Sin vacunas.</p>
+            ) : (
+              <ul className="mt-2 space-y-1 text-sm text-stone-700">
+                {vacunas.map((v) => (
+                  <li key={`${v.origen || "clinica"}-${v.id}`}>
+                    <strong>{v.nombre}</strong> · {formatDate(v.fecha)}
+                    {v.origen === "tutor" ? " · (tutor)" : ""}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-aguara-ink">Desparasitaciones</h3>
+            {desparas.length === 0 ? (
+              <p className="mt-2 text-sm text-stone-500">Sin registros.</p>
+            ) : (
+              <ul className="mt-2 space-y-1 text-sm text-stone-700">
+                {desparas.map((d) => (
+                  <li key={d.id}>
+                    <strong>{d.producto}</strong> · {formatDate(d.fecha)}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-aguara-ink">Archivos</h3>
+            {archivos.length === 0 ? (
+              <p className="mt-2 text-sm text-stone-500">Sin archivos.</p>
+            ) : (
+              <ul className="mt-2 space-y-1 text-sm">
+                {archivos.map((a) => (
+                  <li key={a.id}>
+                    <a
+                      href={a.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium text-aguara-orange underline"
+                    >
+                      {a.nombre}
+                    </a>{" "}
+                    <span className="text-stone-500">({a.tipo})</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
         {consulta.cerrada ? (
           <div className="mt-4 rounded-xl bg-emerald-50 px-3 py-3 text-sm text-emerald-900">
             <p>
@@ -490,7 +612,7 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
               />
             ) : null}
           </div>
-        ) : (
+        ) : consulta.clinica_id === clinicaId ? (
           <div className="mt-5 space-y-3 border-t border-stone-100 pt-4">
             <Field label="Veterinario que firma" id="hc-firma-vet">
               <select
@@ -540,6 +662,7 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
                           await cerrarConsulta(consulta.id, {
                             firmadoPor,
                             firmaImagen: vet.firma_digital,
+                            clinicaId,
                           });
                           await load();
                           await onChanged();
@@ -557,7 +680,7 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
               })()
             ) : null}
           </div>
-        )}
+        ) : null}
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">

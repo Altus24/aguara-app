@@ -128,9 +128,11 @@ export default function HistorialSection({ tutor }) {
           ) : (
             <ul className="mt-3 space-y-2 text-sm">
               {data.vacunas.map((v) => (
-                <li key={v.id}>
-                  <strong>{v.clinica_pacientes?.nombre}</strong> · {v.nombre} · {formatDate(v.fecha)}
+                <li key={`${v.origen || "clinica"}-${v.id}`}>
+                  <strong>{v.clinica_pacientes?.nombre || "Mascota"}</strong> · {v.nombre} ·{" "}
+                  {formatDate(v.fecha)}
                   {v.proxima_fecha ? ` · próxima ${formatDate(v.proxima_fecha)}` : ""}
+                  {v.origen === "tutor" ? " · cargada por vos" : ""}
                 </li>
               ))}
             </ul>
