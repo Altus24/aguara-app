@@ -36,7 +36,9 @@ export function TutorAuthProvider({ children }) {
 
     const { data, error } = await supabase
       .from("tutores")
-      .select("id, nombre_completo, email, telefono, telefono_secundario")
+      .select(
+        "id, nombre_completo, email, telefono, telefono_secundario, direccion, clinica_preferida_id",
+      )
       .eq("email", emailNorm)
       .maybeSingle();
 
@@ -60,6 +62,11 @@ export function TutorAuthProvider({ children }) {
     return data;
   }, []);
 
+  const refreshTutor = useCallback((next) => {
+    writeTutorSession(next);
+    setTutor(next);
+  }, []);
+
   const signOut = useCallback(() => {
     clearTutorSession();
     setTutor(null);
@@ -72,6 +79,7 @@ export function TutorAuthProvider({ children }) {
         isAuthenticated: Boolean(tutor),
         authLoading,
         signIn,
+        refreshTutor,
         signOut,
       }}
     >

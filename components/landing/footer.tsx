@@ -42,6 +42,16 @@ export function LandingFooter() {
               </Link>
             </li>
             <li>
+              <Link href="/clinica/login" className="hover:text-aguara-ink">
+                Ingreso clínicas
+              </Link>
+            </li>
+            <li>
+              <Link href="/clinica/registro" className="hover:text-aguara-ink">
+                Registrar clínica
+              </Link>
+            </li>
+            <li>
               <Link href="/admin" className="hover:text-aguara-ink">
                 Panel admin
               </Link>

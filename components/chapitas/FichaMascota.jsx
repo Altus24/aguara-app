@@ -13,7 +13,9 @@ import {
   getChapitaLookupIds,
   extractChapitaIdFromRoute,
 } from '@/lib/chapitas/supabaseClient';
+import { useTutorAuth } from '@/context/TutorAuthContext';
 import ActivarChapitaForm from './ActivarChapitaForm';
+import FichaMascotaPrivada from './FichaMascotaPrivada';
 import { listarMascotasDelTutor } from '@/lib/chapitas/tutores';
 
 function FichaMascota() {
@@ -21,6 +23,7 @@ function FichaMascota() {
   const raw = Array.isArray(params.id) ? params.id.join('/') : params.id;
   const rawId = extractChapitaIdFromRoute(raw || '');
   const chapitaId = normalizeChapitaId(rawId);
+  const { tutor, isAuthenticated, authLoading } = useTutorAuth();
 
   const [mascota, setMascota] = useState(null);
   const [otrasMascotas, setOtrasMascotas] = useState([]);
@@ -348,6 +351,14 @@ function FichaMascota() {
           </>
         ) : null}
       </div>
+
+      {!authLoading &&
+      isAuthenticated &&
+      tutor?.id &&
+      mascota.tutor_id &&
+      tutor.id === mascota.tutor_id ? (
+        <FichaMascotaPrivada chapitaId={mascota.id} tutorId={tutor.id} />
+      ) : null}
 
       <p className="mt-8 text-center">
         <Link href="/" className="text-orange-600 underline hover:text-orange-800">
