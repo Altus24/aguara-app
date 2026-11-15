@@ -64,7 +64,7 @@ export default function ClientesSection({ clinicaId, clinicaNombre }) {
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-aguara-ink">Clientes (tutor)</h2>
+          <h2 className="text-lg font-semibold text-aguara-ink">Clientes (dueños)</h2>
           <p className="text-sm text-stone-500">Contacto, mascotas y pagos</p>
         </div>
         <button type="button" className={primaryBtnClass} onClick={() => setShowForm((v) => !v)}>

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { confirmGuardar } from '@/lib/confirmAction';
 import { supabase, getCanonicalInsertChapitaId } from '@/lib/chapitas/supabaseClient';
 import { generateChapitaQrSvg } from '@/lib/chapitas/chapitaQr';
 import {
@@ -201,6 +202,7 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (!(await confirmGuardar('la activación de la chapita'))) return;
     setError('');
     if (!validatePet()) return;
 

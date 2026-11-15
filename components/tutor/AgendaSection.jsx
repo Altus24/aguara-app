@@ -11,6 +11,7 @@ import {
   primaryBtnClass,
   secondaryBtnClass,
 } from "@/components/tutor/ui";
+import { confirmGuardar } from "@/lib/confirmAction";
 import { etiquetaEstado } from "@/lib/chapitas/clinicaOps";
 import {
   listarCitasTutor,
@@ -332,6 +333,9 @@ function CitaForm({ tutor, mascotas, clinicas, initial, onCancel, onSaved }) {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (!(await confirmGuardar(initial?.id ? "la reprogramación del turno" : "la solicitud de turno"))) {
+      return;
+    }
     setSaving(true);
     setError("");
     try {

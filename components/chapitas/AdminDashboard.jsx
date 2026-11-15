@@ -13,15 +13,32 @@ import {
   countAvailableAllTiradas,
   countActivatedAllTiradas,
   formatChapitaIdLabel,
+  formatTiradaChapitaId,
   getTiradaIdRange,
   normalizeChapitaId,
   MAX_TIRADAS,
 } from '@/lib/chapitas/chapitaId';
 import {
   downloadChapitaQrSvg,
+  downloadTiradaQrPack,
+  downloadTiradaQrPdf,
   downloadTiradaQrZip,
   generateChapitaQrSvg,
+  getA4QrGrid,
 } from '@/lib/chapitas/chapitaQr';
+import { loadQrEstilo, loadQrPlantillas, normalizeQrEstilo } from '@/lib/chapitas/qrEstilo';
+import {
+  CANTIDAD_SIN_CONFIG,
+  DEFAULT_TIRADA_CANTIDAD,
+  TIRADA_CANTIDAD_OPTIONS,
+  deleteTiradaConfig,
+  getTiradaConfig,
+  loadAllTiradaConfigs,
+  plantillaLabel,
+  resolveTiradaEstilo,
+  setTiradaConfig,
+} from '@/lib/chapitas/tiradaConfig';
+import { confirmAccion, confirmEliminar, confirmGuardar } from '@/lib/confirmAction';
 import { useAuth } from '@/context/AuthContext';
 import {
   actualizarClinica,
@@ -29,6 +46,7 @@ import {
   eliminarClinica,
 } from '@/lib/chapitas/clinicas';
 import AdminEditMascotaModal from './AdminEditMascotaModal';
+import QrEstiloSection from './QrEstiloSection';
 
 function isOrphanWebChapita(chapitaId) {
   return isDynamicChapitaId(String(chapitaId).trim().toLowerCase());
@@ -63,6 +81,16 @@ export default function AdminDashboard() {
   const [editingClinicaId, setEditingClinicaId] = useState(null);
   const [showClinicaForm, setShowClinicaForm] = useState(false);
   const [savingClinica, setSavingClinica] = useState(false);
+  const [qrEstilo, setQrEstilo] = useState(() => loadQrEstilo());
+  const [qrPlantillas, setQrPlantillas] = useState([]);
+  const [tiradaConfigs, setTiradaConfigs] = useState({});
+  const [nuevaTiradaCantidad, setNuevaTiradaCantidad] = useState(DEFAULT_TIRADA_CANTIDAD);
+  const [nuevaTiradaPlantillaId, setNuevaTiradaPlantillaId] = useState('');
+
+  useEffect(() => {
+    setQrPlantillas(loadQrPlantillas());
+    setTiradaConfigs(loadAllTiradaConfigs());
+  }, [tab]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -134,9 +162,29 @@ export default function AdminDashboard() {
     loadData();
   }, [loadData]);
 
-  const sinActivarTotal = countAvailableAllTiradas(mascotas, tiradaActual);
-  const activadasTotal = countActivatedAllTiradas(mascotas, tiradaActual);
-  const stockTotal = tiradaActual * CHAPITAS_PER_TIRADA;
+  const tiradaConfigsResolved = useMemo(() => {
+    const map = {};
+    for (let t = 1; t <= tiradaActual; t += 1) {
+      map[t] = tiradaConfigs[String(t)] || getTiradaConfig(t);
+    }
+    return map;
+  }, [tiradaActual, tiradaConfigs]);
+
+  const cantidadesByTirada = useMemo(() => {
+    const map = {};
+    for (let t = 1; t <= tiradaActual; t += 1) {
+      const cfg = tiradaConfigsResolved[t];
+      map[t] = cfg?.cantidad ?? CANTIDAD_SIN_CONFIG;
+    }
+    return map;
+  }, [tiradaActual, tiradaConfigsResolved]);
+
+  const sinActivarTotal = countAvailableAllTiradas(mascotas, tiradaActual, cantidadesByTirada);
+  const activadasTotal = countActivatedAllTiradas(mascotas, tiradaActual, cantidadesByTirada);
+  const stockTotal = Object.values(cantidadesByTirada).reduce(
+    (sum, n) => sum + (Number(n) || CANTIDAD_SIN_CONFIG),
+    0
+  );
 
   const mascotasActivadas = mascotas.filter((m) => {
     const parsed = parseChapitaTirada(m.id);
@@ -146,15 +194,26 @@ export default function AdminDashboard() {
   const tiradaStats = useMemo(() => {
     return Array.from({ length: tiradaActual }, (_, index) => {
       const tirada = index + 1;
-      const activadas = countActivatedInTirada(mascotas, tirada);
-      const disponibles = countAvailableInTirada(mascotas, tirada);
+      const cfg = tiradaConfigsResolved[tirada] || getTiradaConfig(tirada);
+      const cantidad = cfg.cantidad;
+      const activadas = countActivatedInTirada(mascotas, tirada, cantidad);
+      const disponibles = countAvailableInTirada(mascotas, tirada, cantidad);
       const range = getTiradaIdRange(tirada);
-      return { tirada, activadas, disponibles, ...range };
+      return {
+        tirada,
+        cantidad,
+        definida: Boolean(cfg.definida),
+        plantilla_id: cfg.plantilla_id,
+        activadas,
+        disponibles,
+        desde: formatTiradaChapitaId(tirada, 1),
+        hasta: formatTiradaChapitaId(tirada, cantidad),
+        bloqueHasta: range.hasta,
+      };
     });
-  }, [mascotas, tiradaActual]);
+  }, [mascotas, tiradaActual, tiradaConfigsResolved]);
 
   const nextTirada = tiradaActual + 1;
-  const nextRange = getTiradaIdRange(nextTirada);
   const canCreateBatch = tiradaActual < MAX_TIRADAS;
 
   const mascotasPorTutor = useMemo(() => {
@@ -190,6 +249,7 @@ export default function AdminDashboard() {
 
   const TABS = [
     { id: 'chapitas', label: 'Chapitas' },
+    { id: 'qr', label: 'Personalizar QR' },
     { id: 'clinicas', label: `Clínicas (${clinicas.length})` },
     { id: 'tutores', label: `Tutores (${tutores.length})` },
   ];
@@ -220,6 +280,8 @@ export default function AdminDashboard() {
 
   async function handleSaveClinica(event) {
     event.preventDefault();
+    const detalle = editingClinicaId ? 'los cambios de la clínica' : 'la nueva clínica';
+    if (!(await confirmGuardar(detalle))) return;
     setSavingClinica(true);
     setMessage('');
     setSuccessMessage('');
@@ -255,9 +317,9 @@ export default function AdminDashboard() {
 
   async function handleDeleteClinica(clinica) {
     if (
-      !window.confirm(
-        `¿Eliminar la clínica “${clinica.nombre}”? Se borrarán también sus datos operativos vinculados.`,
-      )
+      !(await confirmEliminar(
+        `la clínica “${clinica.nombre}” (y sus datos operativos vinculados)`,
+      ))
     ) {
       return;
     }
@@ -276,8 +338,9 @@ export default function AdminDashboard() {
     }
   }
 
+
   const handleDeleteMascota = async (id) => {
-    if (!window.confirm(`¿Eliminar la ficha de la chapita ${formatChapitaIdLabel(id)}?`)) return;
+    if (!(await confirmEliminar(`la ficha de la chapita ${formatChapitaIdLabel(id)}`))) return;
     const { error } = await supabase.from('mascotas').delete().eq('id', id);
     if (error) {
       setMessage('No se pudo eliminar la mascota.');
@@ -288,25 +351,46 @@ export default function AdminDashboard() {
 
   const handleDownloadQr = async (mascota) => {
     try {
-      const svg = mascota.qr_svg || (await generateChapitaQrSvg(mascota.id));
+      const svg = await generateChapitaQrSvg(mascota.id, qrEstilo);
       downloadChapitaQrSvg(mascota.id, svg);
     } catch {
       setMessage('No se pudo descargar el QR.');
     }
   };
 
-  const handleDownloadTiradaZip = async (tirada) => {
+  function refreshPlantillas() {
+    setQrPlantillas(loadQrPlantillas());
+  }
+
+  function updateTiradaConfigLocal(tirada, patch) {
+    const next = setTiradaConfig(tirada, patch);
+    setTiradaConfigs((prev) => ({ ...prev, [String(tirada)]: next }));
+    return next;
+  }
+
+  function estiloForTirada(tirada) {
+    return resolveTiradaEstilo(tirada, qrEstilo);
+  }
+
+  const handleDownloadTiradaZipOnly = async (tirada) => {
+    const config = getTiradaConfig(tirada);
+    const estilo = estiloForTirada(tirada);
+    const cantidad = config.cantidad || CHAPITAS_PER_TIRADA;
     setMessage('');
     setSuccessMessage('');
-    setZipProgress({ done: 0, total: CHAPITAS_PER_TIRADA, tirada });
+    setZipProgress({ done: 0, total: cantidad, tirada, phase: 'zip' });
     try {
-      await downloadTiradaQrZip(tirada, (done, total) => {
-        setZipProgress({ done, total, tirada });
-      });
-      const range = getTiradaIdRange(tirada);
-      setSuccessMessage(
-        `ZIP listo: chapitas ${range.desde}–${range.hasta} (${CHAPITAS_PER_TIRADA} QR).`
+      await downloadTiradaQrZip(
+        tirada,
+        (done, total) => {
+          setZipProgress({ done, total, tirada, phase: 'zip' });
+        },
+        estilo,
+        { cantidad },
       );
+      const desde = formatTiradaChapitaId(tirada, 1);
+      const hasta = formatTiradaChapitaId(tirada, cantidad);
+      setSuccessMessage(`ZIP listo: ${desde}–${hasta} (${cantidad} QR).`);
     } catch {
       setMessage('No se pudo crear el ZIP de QR. Intentá nuevamente.');
     } finally {
@@ -314,12 +398,120 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleDownloadTiradaPdfOnly = async (tirada) => {
+    const config = getTiradaConfig(tirada);
+    const estilo = estiloForTirada(tirada);
+    const cantidad = config.cantidad || CHAPITAS_PER_TIRADA;
+    const grid = getA4QrGrid(estilo.tamano_cm);
+    setMessage('');
+    setSuccessMessage('');
+    setZipProgress({ done: 0, total: cantidad, tirada, phase: 'pdf' });
+    try {
+      const result = await downloadTiradaQrPdf(
+        tirada,
+        (done, total, phase) => {
+          setZipProgress({ done, total, tirada, phase: phase || 'pdf' });
+        },
+        estilo,
+        { cantidad },
+      );
+      const desde = formatTiradaChapitaId(tirada, 1);
+      const hasta = formatTiradaChapitaId(tirada, cantidad);
+      setSuccessMessage(
+        `PDF A4 listo: ${desde}–${hasta} (${cantidad} QR, ${result.pages} hoja${
+          result.pages === 1 ? '' : 's'
+        }, ${result.perPage || grid.perPage} QR/hoja).`,
+      );
+    } catch {
+      setMessage('No se pudo crear el PDF de QR. Intentá nuevamente.');
+    } finally {
+      setZipProgress(null);
+    }
+  };
+
+  const handleDownloadTiradaZip = async (tirada) => {
+    const config = getTiradaConfig(tirada);
+    const estilo = estiloForTirada(tirada);
+    const cantidad = config.cantidad || CHAPITAS_PER_TIRADA;
+    const grid = getA4QrGrid(estilo.tamano_cm);
+    const hojasEstimadas = Math.max(1, Math.ceil(cantidad / grid.perPage));
+    setMessage('');
+    setSuccessMessage('');
+    setZipProgress({ done: 0, total: cantidad, tirada, phase: 'generar' });
+    try {
+      const result = await downloadTiradaQrPack(
+        tirada,
+        (done, total, phase) => {
+          setZipProgress({ done, total, tirada, phase: phase || 'generar' });
+        },
+        estilo,
+        { cantidad }
+      );
+      const desde = formatTiradaChapitaId(tirada, 1);
+      const hasta = formatTiradaChapitaId(tirada, cantidad);
+      const plantilla = qrPlantillas.find((p) => p.id === config.plantilla_id);
+      setSuccessMessage(
+        `Descarga lista: ZIP + PDF A4 (${result.pages || hojasEstimadas} hoja${
+          (result.pages || hojasEstimadas) === 1 ? '' : 's'
+        }, ${result.perPage || grid.perPage} QR/hoja) · ${desde}–${hasta} (${cantidad} QR)` +
+          `${plantilla ? ` · plantilla “${plantilla.nombre}”` : ' · estilo activo'}.`
+      );
+    } catch {
+      setMessage('No se pudo crear el ZIP/PDF de QR. Intentá nuevamente.');
+    } finally {
+      setZipProgress(null);
+    }
+  };
+
+  const handleEliminarTirada = async (tirada) => {
+    if (tirada !== tiradaActual) {
+      setMessage('Solo se puede eliminar la última tirada (la más reciente).');
+      return;
+    }
+    if (
+      !(await confirmEliminar(
+        `la tirada T${tirada} y todas sus fichas activadas en ese lote`,
+      ))
+    ) {
+      return;
+    }
+    setMessage('');
+    setSuccessMessage('');
+    const { data, error } = await supabase.rpc('eliminar_ultima_tirada');
+    if (error) {
+      setMessage(
+        error.message?.includes('not authorized')
+          ? 'Sin permisos para eliminar tiradas.'
+          : error.message?.includes('eliminar_ultima_tirada') ||
+              error.message?.includes('Could not find')
+            ? 'No se pudo eliminar. Ejecutá supabase/chapitas/23_eliminar_tirada.sql en Supabase.'
+            : 'No se pudo eliminar la tirada.',
+      );
+      return;
+    }
+    deleteTiradaConfig(tirada);
+    setTiradaConfigs(loadAllTiradaConfigs());
+    setSuccessMessage(
+      data?.reinicio
+        ? `Tirada T${tirada} vaciada. El inventario quedó en T1.`
+        : `Tirada T${data?.tirada_eliminada || tirada} eliminada.`,
+    );
+    await loadData();
+  };
+
   const handleCreateBatch = async () => {
     if (!canCreateBatch) return;
-    const confirmed = window.confirm(
-      `¿Crear tirada ${nextTirada} con 100 chapitas (${nextRange.desde}–${nextRange.hasta}) y descargar el ZIP?`
-    );
-    if (!confirmed) return;
+    const cantidad = Number(nuevaTiradaCantidad) || CHAPITAS_PER_TIRADA;
+    const plantilla = qrPlantillas.find((p) => p.id === nuevaTiradaPlantillaId);
+    if (
+      !(await confirmAccion(
+        `¿Crear tirada ${nextTirada} y descargar ${cantidad} QR (${formatTiradaChapitaId(nextTirada, 1)}–${formatTiradaChapitaId(nextTirada, cantidad)})` +
+          `${plantilla ? ` con plantilla “${plantilla.nombre}”` : ' con el estilo activo'}?\n\n` +
+          `Nota: el inventario reserva el bloque completo de ${CHAPITAS_PER_TIRADA} IDs; el ZIP incluye solo la cantidad elegida.`,
+      ))
+    ) {
+      return;
+    }
 
     setCreatingBatch(true);
     setMessage('');
@@ -337,13 +529,21 @@ export default function AdminDashboard() {
     }
 
     const tirada = data.tirada;
-    setSuccessMessage(`Tirada ${tirada} creada (${data.desde}–${data.hasta}). Generando ZIP…`);
+    updateTiradaConfigLocal(tirada, {
+      cantidad,
+      plantilla_id: nuevaTiradaPlantillaId || null,
+    });
+    setSuccessMessage(
+      `Tirada ${tirada} creada. Generando ZIP + PDF A4 de ${cantidad} QR…`
+    );
     await loadData();
     await handleDownloadTiradaZip(tirada);
   };
 
   return (
-    <section className="mx-auto max-w-5xl px-4 py-10">
+    <section
+      className={`mx-auto px-4 py-10 ${tab === 'qr' ? 'max-w-[95vw]' : 'max-w-5xl'}`}
+    >
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-blue-800">Panel superadmin</h1>
         <button type="button" onClick={signOut} className="text-gray-600 underline">
@@ -382,6 +582,15 @@ export default function AdminDashboard() {
               </button>
             ))}
           </div>
+
+          {tab === 'qr' ? (
+            <QrEstiloSection
+              onSaved={(estilo) => {
+                setQrEstilo(normalizeQrEstilo(estilo));
+                refreshPlantillas();
+              }}
+            />
+          ) : null}
 
           {tab === 'clinicas' ? (
             <div className="mb-10 space-y-4">
@@ -661,8 +870,8 @@ export default function AdminDashboard() {
           <div className="mb-8 rounded-lg bg-white p-6 shadow-md">
             <h2 className="text-xl font-semibold text-blue-700 mb-3">Inventario de chapitas</h2>
             <p className="mb-4 text-sm text-gray-600">
-              Tirada 1: T1-001–T1-100. Tirada 2: 200–299. Tirada 3: 300–399. Al crear una tirada
-              nueva, suman 100 chapitas sin activar.
+              Tirada 1: T1-001–T1-100. Tirada 2: 200–299. Tirada 3: 300–399. Cantidad y
+              plantilla se eligen al crear la tirada y después quedan fijas.
             </p>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 text-sm mb-4">
               <div className="rounded-md bg-blue-50 p-4">
@@ -676,21 +885,66 @@ export default function AdminDashboard() {
                 <p className="text-gray-600">Activadas</p>
                 <p className="text-3xl font-bold text-green-800">{activadasTotal}</p>
               </div>
-              <div className="rounded-md bg-blue-50 p-4 flex flex-col justify-center">
+              <div className="rounded-md border border-blue-100 bg-blue-50/70 p-4 space-y-3 sm:col-span-2 lg:col-span-1">
+                <p className="text-sm font-medium text-blue-900">
+                  Nueva tirada T{nextTirada}
+                </p>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-gray-700">
+                    Cantidad de QR a generar
+                  </span>
+                  <select
+                    value={nuevaTiradaCantidad}
+                    onChange={(e) => setNuevaTiradaCantidad(Number(e.target.value))}
+                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                  >
+                    {TIRADA_CANTIDAD_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n} chapitas ({formatTiradaChapitaId(nextTirada, 1)}–
+                        {formatTiradaChapitaId(nextTirada, n)})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-gray-700">
+                    Plantilla de QR
+                  </span>
+                  <select
+                    value={nuevaTiradaPlantillaId}
+                    onChange={(e) => setNuevaTiradaPlantillaId(e.target.value)}
+                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                  >
+                    <option value="">Estilo activo (Personalizar QR)</option>
+                    {qrPlantillas.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nombre} · {p.estilo.tamano_cm} cm · ECC {p.estilo.complejidad}
+                      </option>
+                    ))}
+                  </select>
+                  {qrPlantillas.length === 0 ? (
+                    <span className="mt-1 block text-xs text-amber-700">
+                      No hay plantillas. Creá una en la pestaña Personalizar QR.
+                    </span>
+                  ) : null}
+                </label>
                 <button
                   type="button"
                   disabled={!canCreateBatch || creatingBatch || Boolean(zipProgress)}
                   onClick={handleCreateBatch}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {creatingBatch || zipProgress
                     ? zipProgress
-                      ? `Generando ZIP… ${zipProgress.done}/${zipProgress.total}`
+                      ? `Generando ${zipProgress.phase === 'pdf' ? 'PDF' : 'QR'}… ${zipProgress.done}/${zipProgress.total}`
                       : 'Creando tirada...'
-                    : `Crear tirada ${nextTirada} (${nextRange.desde}–${nextRange.hasta})`}
+                    : `Crear tirada ${nextTirada} (${nuevaTiradaCantidad} QR)`}
                 </button>
-                <p className="text-xs text-gray-500 mt-2">
-                  Crea el lote en el sistema y descarga el ZIP con logo.
+                <p className="text-xs text-gray-500">
+                  Genera {nuevaTiradaCantidad} QR (
+                  {formatTiradaChapitaId(nextTirada, 1)}–
+                  {formatTiradaChapitaId(nextTirada, nuevaTiradaCantidad)}). Después descargá ZIP o
+                  PDF por separado.
                 </p>
               </div>
             </div>
@@ -702,35 +956,85 @@ export default function AdminDashboard() {
                     <th className="p-2">Tirada</th>
                     <th className="p-2">Sin activar</th>
                     <th className="p-2">Activadas</th>
+                    <th className="p-2">Cantidad</th>
+                    <th className="p-2">Plantilla</th>
                     <th className="p-2">Rango ID</th>
-                    <th className="p-2">QR</th>
+                    <th className="p-2">Archivos</th>
+                    <th className="p-2">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {tiradaStats.map((row) => (
-                    <tr key={row.tirada} className="border-t">
-                      <td className="p-2 font-semibold">T{row.tirada}</td>
-                      <td className="p-2">
-                        {row.disponibles} / {CHAPITAS_PER_TIRADA}
-                      </td>
-                      <td className="p-2">{row.activadas}</td>
-                      <td className="p-2 font-mono text-xs">
-                        {row.desde}–{row.hasta}
-                      </td>
-                      <td className="p-2">
-                        <button
-                          type="button"
-                          disabled={Boolean(zipProgress)}
-                          onClick={() => handleDownloadTiradaZip(row.tirada)}
-                          className="text-blue-600 underline disabled:opacity-50"
-                        >
-                          {zipProgress?.tirada === row.tirada
-                            ? `${zipProgress.done}/${zipProgress.total}`
-                            : 'Descargar ZIP'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {tiradaStats.map((row) => {
+                    const isUltima = row.tirada === tiradaActual;
+                    const busy = zipProgress?.tirada === row.tirada;
+                    return (
+                      <tr key={row.tirada} className="border-t">
+                        <td className="p-2 font-semibold">T{row.tirada}</td>
+                        <td className="p-2">
+                          {row.disponibles} / {row.cantidad}
+                        </td>
+                        <td className="p-2">
+                          {row.activadas} / {row.cantidad}
+                        </td>
+                        <td className="p-2">
+                          {row.cantidad}
+                          {!row.definida ? (
+                            <span className="ml-1 text-[10px] text-gray-400">(legado)</span>
+                          ) : null}
+                        </td>
+                        <td className="p-2 min-w-[10rem]">
+                          <span className="text-sm text-gray-800">
+                            {plantillaLabel(row.plantilla_id, row.definida)}
+                          </span>
+                        </td>
+                        <td className="p-2 font-mono text-xs">
+                          {row.desde}–{row.hasta}
+                          <span className="block text-[10px] text-gray-400">
+                            bloque {row.desde}–{row.bloqueHasta}
+                          </span>
+                        </td>
+                        <td className="p-2">
+                          <div className="flex flex-col gap-1 items-start">
+                            <button
+                              type="button"
+                              disabled={Boolean(zipProgress)}
+                              onClick={() => handleDownloadTiradaZipOnly(row.tirada)}
+                              className="text-blue-600 underline disabled:opacity-50"
+                            >
+                              {busy && zipProgress.phase === 'zip'
+                                ? `ZIP ${zipProgress.done}/${zipProgress.total}`
+                                : 'Descargar ZIP'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={Boolean(zipProgress)}
+                              onClick={() => handleDownloadTiradaPdfOnly(row.tirada)}
+                              className="text-blue-600 underline disabled:opacity-50"
+                            >
+                              {busy && (zipProgress.phase === 'pdf' || zipProgress.phase === 'generar')
+                                ? `PDF ${zipProgress.done}/${zipProgress.total}`
+                                : 'Descargar PDF'}
+                            </button>
+                          </div>
+                        </td>
+                        <td className="p-2">
+                          <button
+                            type="button"
+                            disabled={!isUltima || Boolean(zipProgress) || creatingBatch}
+                            onClick={() => handleEliminarTirada(row.tirada)}
+                            className="text-red-600 underline disabled:cursor-not-allowed disabled:opacity-40"
+                            title={
+                              isUltima
+                                ? 'Eliminar esta tirada'
+                                : 'Solo se puede eliminar la última tirada'
+                            }
+                          >
+                            Eliminar
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

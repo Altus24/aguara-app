@@ -43,3 +43,13 @@ git commit -m "Agrega login de tutores y flujo de chapitas"
 git push origin main
 
 vercel --prod
+
+
+superadmin@test.com
+123456
+
+veterinariaadomicilio@gmail.com
+veterinariaadomicilio@gmail.com
+
+huellitas@gmail.com
+huellitas@gmail.com

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import { confirmGuardar } from '@/lib/confirmAction';
 import { supabase } from '@/lib/chapitas/supabaseClient';
 
 const ESPECIES = ['Perro', 'Gato'];
@@ -59,6 +60,7 @@ function AdminEditMascotaModal({ mascota, onClose, onSaved }) {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (!(await confirmGuardar('los cambios de la ficha'))) return;
     setError('');
 
     if (

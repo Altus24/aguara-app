@@ -1,0 +1,28 @@
+---
+description: Pedir confirmación antes de guardar o eliminar en toda la app
+alwaysApply: true
+---
+
+# Confirmaciones de guardar y eliminar
+
+Antes de cualquier acción que **persista** o **elimine** datos (formularios Guardar, CRUD, borrados, actualizar plantillas, etc.), usar siempre los helpers de `lib/confirmAction.js`:
+
+```js
+import { confirmGuardar, confirmEliminar } from '@/lib/confirmAction';
+
+// Al guardar / actualizar (siempre await + handlers async)
+if (!(await confirmGuardar('el perfil del paciente'))) return;
+
+// Al eliminar / borrar
+if (!(await confirmEliminar(`la vacuna “${nombre}”`))) return;
+```
+
+El modal lo monta `ConfirmHost` en `app/providers.tsx`. No uses `window.confirm` directo.
+
+## Reglas
+
+- **Obligatorio** en handlers de guardar, crear persistente, actualizar y eliminar.
+- Los helpers son **async**: el handler debe ser `async` y usar `await`.
+- No hace falta en login, logout, navegación, filtros, ni vista previa sin persistir.
+- Mensajes en español, claros y con el nombre del recurso cuando sea posible.
+- No agregar flujos de guardado/borrado nuevos sin esta confirmación.

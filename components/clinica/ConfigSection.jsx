@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { confirmEliminar } from "@/lib/confirmAction";
 import SignaturePad from "@/components/clinica/SignaturePad";
 import {
   Field,
@@ -400,7 +401,7 @@ function Veterinarios({ clinicaId }) {
                     type="button"
                     className="text-stone-500 underline hover:text-red-700"
                     onClick={async () => {
-                      if (!confirm(`¿Eliminar a ${v.nombre}?`)) return;
+                      if (!(await confirmEliminar(`al veterinario ${v.nombre}`))) return;
                       await eliminarVeterinario(v.id);
                       await reload();
                     }}

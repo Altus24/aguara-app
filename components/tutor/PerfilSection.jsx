@@ -37,6 +37,8 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
   const [tieneChapita, setTieneChapita] = useState(true);
   const [solicitudes, setSolicitudes] = useState([]);
   const [compartir, setCompartir] = useState([]);
+  const [mascotas, setMascotas] = useState([]);
+  const [mascotaElegida, setMascotaElegida] = useState({});
   const [form, setForm] = useState({
     nombre_completo: tutor.nombre_completo || "",
     telefono: tutor.telefono || "",
@@ -72,9 +74,21 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
         ]);
         if (cancelled) return;
         setClinicas(clinics);
+        setMascotas(pets.mascotas || []);
         setTieneChapita(pets.mascotas.some((m) => m.chapita_id));
         setSolicitudes(sols);
         setCompartir(shares);
+        setMascotaElegida((prev) => {
+          const next = { ...prev };
+          for (const sol of shares) {
+            if (!next[sol.id] && pets.mascotas?.[0]?.chapita_id) {
+              next[sol.id] = pets.mascotas[0].chapita_id;
+            } else if (!next[sol.id] && pets.mascotas?.[0]?.key) {
+              next[sol.id] = pets.mascotas[0].chapita_id || pets.mascotas[0].id || "";
+            }
+          }
+          return next;
+        });
         setForm({
           nombre_completo: profile.nombre_completo || "",
           telefono: profile.telefono || "",
@@ -159,10 +173,38 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
                 {sol.clinicas?.ciudad ? ` · ${sol.clinicas.ciudad}` : ""}
               </p>
               <p className="mt-1 text-sm text-amber-900/80">
-                Quiere acceder a tu perfil (contacto y mascotas). Sin tu aceptación solo ven tu
-                nombre y el de tus mascotas.
+                Quiere ver tus datos de contacto y una mascota que elijas. Sin aceptar solo ven tu
+                nombre y los nombres de tus mascotas.
               </p>
               {sol.mensaje ? <p className="mt-2 text-sm text-amber-900">{sol.mensaje}</p> : null}
+              <div className="mt-3">
+                <label className="mb-1 block text-sm font-medium text-amber-950" htmlFor={`share-pet-${sol.id}`}>
+                  Mascota a compartir
+                </label>
+                <select
+                  id={`share-pet-${sol.id}`}
+                  className={fieldClass}
+                  value={mascotaElegida[sol.id] || ""}
+                  onChange={(e) =>
+                    setMascotaElegida((prev) => ({ ...prev, [sol.id]: e.target.value }))
+                  }
+                >
+                  <option value="">Seleccionar mascota…</option>
+                  {mascotas
+                    .filter((m) => m.chapita_id)
+                    .map((m) => (
+                      <option key={m.key} value={m.chapita_id}>
+                        {m.nombre}
+                        {m.especie ? ` · ${m.especie}` : ""}
+                      </option>
+                    ))}
+                </select>
+                {mascotas.filter((m) => m.chapita_id).length === 0 ? (
+                  <p className="mt-1 text-xs text-amber-800">
+                    Necesitás una mascota con chapita QR para compartir.
+                  </p>
+                ) : null}
+              </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -172,8 +214,12 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
                     setResolvingId(sol.id);
                     setError("");
                     try {
-                      await aceptarCompartirPerfilTutor(tutor.id, sol.id);
-                      setMessage("Perfil compartido con la clínica.");
+                      await aceptarCompartirPerfilTutor(
+                        tutor.id,
+                        sol.id,
+                        mascotaElegida[sol.id],
+                      );
+                      setMessage("Compartiste tu perfil y la mascota elegida con la clínica.");
                       await loadSolicitudes();
                     } catch (err) {
                       setError(err instanceof Error ? err.message : "No se pudo aceptar.");
@@ -182,13 +228,21 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
                     }
                   }}
                 >
-                  {resolvingId === sol.id ? "…" : "Aceptar"}
+                  {resolvingId === sol.id ? "…" : "Aceptar y compartir"}
                 </button>
                 <button
                   type="button"
                   className={secondaryBtnClass}
                   disabled={Boolean(resolvingId)}
                   onClick={async () => {
+                    const clinicaLabel = sol.clinicas?.nombre || "la clínica";
+                    if (
+                      !confirmAccion(
+                        `¿Rechazar la solicitud de ${clinicaLabel}?`,
+                      )
+                    ) {
+                      return;
+                    }
                     setResolvingId(sol.id);
                     setError("");
                     try {
@@ -272,22 +326,14 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
         <div className="rounded-2xl border border-aguara-orange/30 bg-aguara-cream/50 p-5">
           <p className="text-sm font-semibold text-aguara-ink">Conseguí tu chapita QR Aguará</p>
           <p className="mt-1 text-sm text-stone-600">
-            Podés sacar turnos igual, pero con el QR tu mascota queda identificada si se pierde y
-            vinculás su ficha a tu cuenta en segundos.
+            Todavía no tenés un QR registrado. Con la chapita tu mascota queda identificada si se
+            pierde y vinculás su ficha a tu cuenta en segundos.
           </p>
           <Link href="/" className={`${primaryBtnClass} mt-4`}>
             Activar / comprar chapita
           </Link>
         </div>
-      ) : (
-        <div className="rounded-2xl border border-stone-200 bg-white p-4 text-sm text-stone-600">
-          Tip: si todavía no tenés chapita física para otra mascota,{" "}
-          <Link href="/" className="font-medium text-aguara-orange underline">
-            activá una nueva
-          </Link>{" "}
-          y vincularla a tu cuenta.
-        </div>
-      )}
+      ) : null}
 
       <form onSubmit={handleSubmit} className={`${cardClass} space-y-4`}>
         <div className="grid gap-3 sm:grid-cols-2">
