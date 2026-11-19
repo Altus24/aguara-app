@@ -149,6 +149,9 @@ function NuevoClienteForm({ clinicaId, onCreated }) {
     setSaving(true);
     setError("");
     try {
+      if (!form.email.trim()) {
+        throw new Error("El email es obligatorio para que el dueño figure en Tutores Aguará.");
+      }
       await crearCliente(clinicaId, form);
       await onCreated();
     } catch (err) {
@@ -161,6 +164,10 @@ function NuevoClienteForm({ clinicaId, onCreated }) {
   return (
     <form onSubmit={handleSubmit} className={`${cardClass} space-y-3`}>
       <h3 className="font-semibold text-aguara-ink">Nuevo cliente</h3>
+      <p className="text-xs text-stone-500">
+        Con email y teléfono también se crea/vincula el tutor Aguará y aparece en el buscador de
+        Tutores.
+      </p>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Nombre completo" id="cli-nom">
           <input
@@ -180,10 +187,11 @@ function NuevoClienteForm({ clinicaId, onCreated }) {
             onChange={(e) => setForm((f) => ({ ...f, telefono: e.target.value }))}
           />
         </Field>
-        <Field label="Email" id="cli-email">
+        <Field label="Email *" id="cli-email">
           <input
             id="cli-email"
             type="email"
+            required
             className={fieldClass}
             value={form.email}
             onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}

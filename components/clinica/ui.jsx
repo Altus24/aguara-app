@@ -56,13 +56,13 @@ export function formatTime(value) {
 
 export const ESTADO_COLORS = {
   pendiente: "bg-yellow-100 text-yellow-900",
-  confirmada: "bg-sky-100 text-sky-800",
+  confirmada: "bg-orange-100 text-orange-900",
   en_espera: "bg-amber-100 text-amber-900",
   en_atencion: "bg-violet-100 text-violet-900",
-  finalizada: "bg-emerald-100 text-emerald-900",
+  finalizada: "bg-stone-100 text-stone-700",
   no_asistio: "bg-stone-200 text-stone-700",
   cancelada: "bg-red-100 text-red-800",
-  lista_espera: "bg-orange-100 text-orange-900",
+  lista_espera: "bg-amber-50 text-amber-900",
 };
 
 export function EstadoBadge({ estado, label }) {

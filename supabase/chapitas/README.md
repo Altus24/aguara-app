@@ -28,9 +28,11 @@ Solo re-ejecutá algo si falta una migración puntual. Orden original:
 22. `22_compartir_mascota.sql` ← compartir ficha de mascota entre actores
 23. `23_eliminar_tirada.sql` ← RPC para eliminar la última tirada desde superadmin
 24. `24_tirada_cantidades.sql` ← capacidad 165; cantidades 40/48/80/96/165
+25. `25_eliminar_tirada_vacia.sql` ← borrar T1 deja inventario vacío (tirada_actual = 0)
+26. `26_compartir_mascota.sql` ← al compartir, el tutor elige qué mascota autoriza
 
 No corras `01` a ciegas si las tablas `mascotas` / `chapitas` / `admin_users` ya existen.
-En proyectos ya en uso, ejecutá al menos el `07`, el `09`, el `10`–`24` para el formulario
+En proyectos ya en uso, ejecutá al menos el `07`, el `09`, el `10`–`26` para el formulario
 ampliado, clínicas, portal de tutores, notificaciones, horarios por vet, cambios de perfil,
 fecha de modificación de HC, vacunas del tutor, compartir perfil/mascota, eliminar tirada
 y nuevas cantidades por tirada.

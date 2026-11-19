@@ -21,6 +21,7 @@ const initialTutorForm = {
   email_tutor: '',
   telefono_contacto: '',
   telefono_secundario: '',
+  direccion: '',
 };
 
 const initialPetForm = {
@@ -29,6 +30,8 @@ const initialPetForm = {
   raza: '',
   sexo: 'Macho',
   castrado: '',
+  fecha_nacimiento: '',
+  peso: '',
   nro_chip: '',
   enfermedad: '',
   medicacion: '',
@@ -227,6 +230,7 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
           email: tutorForm.email_tutor,
           telefono: tutorForm.telefono_contacto,
           telefonoSecundario: tutorForm.telefono_secundario,
+          direccion: tutorForm.direccion,
         });
       }
 
@@ -246,29 +250,46 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
       const tutorTelefonoSec =
         tutor.telefono_secundario || tutorForm.telefono_secundario.trim() || null;
 
-      const { data, error: insertError } = await supabase
+      const mascotaPayload = {
+        id: insertId,
+        tutor_id: tutor.id,
+        nombre_mascota: petForm.nombre_mascota.trim(),
+        especie: petForm.especie,
+        raza: petForm.raza.trim() || null,
+        sexo: petForm.sexo,
+        castrado: petForm.castrado === 'si',
+        fecha_nacimiento: petForm.fecha_nacimiento || null,
+        peso: petForm.peso === '' ? null : Number(petForm.peso),
+        nro_chip: petForm.nro_chip.trim() || null,
+        enfermedad: petForm.enfermedad.trim() || null,
+        medicacion: petForm.medicacion.trim() || null,
+        datos_adicionales: petForm.datos_adicionales.trim() || null,
+        foto_url: fotoUrl,
+        nombre_dueno: tutorNombre,
+        email_tutor: tutorEmail,
+        telefono_contacto: tutorTelefono,
+        telefono_secundario: tutorTelefonoSec,
+        qr_svg: qrSvg,
+      };
+
+      let { data, error: insertError } = await supabase
         .from('mascotas')
-        .insert({
-          id: insertId,
-          tutor_id: tutor.id,
-          nombre_mascota: petForm.nombre_mascota.trim(),
-          especie: petForm.especie,
-          raza: petForm.raza.trim() || null,
-          sexo: petForm.sexo,
-          castrado: petForm.castrado === 'si',
-          nro_chip: petForm.nro_chip.trim() || null,
-          enfermedad: petForm.enfermedad.trim() || null,
-          medicacion: petForm.medicacion.trim() || null,
-          datos_adicionales: petForm.datos_adicionales.trim() || null,
-          foto_url: fotoUrl,
-          nombre_dueno: tutorNombre,
-          email_tutor: tutorEmail,
-          telefono_contacto: tutorTelefono,
-          telefono_secundario: tutorTelefonoSec,
-          qr_svg: qrSvg,
-        })
+        .insert(mascotaPayload)
         .select()
         .single();
+
+      if (
+        insertError &&
+        /fecha_nacimiento|peso|schema cache|does not exist/i.test(insertError.message || '')
+      ) {
+        delete mascotaPayload.fecha_nacimiento;
+        delete mascotaPayload.peso;
+        ({ data, error: insertError } = await supabase
+          .from('mascotas')
+          .insert(mascotaPayload)
+          .select()
+          .single());
+      }
 
       if (insertError) {
         if (insertError.code === '23505') {
@@ -468,6 +489,20 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
                 />
                 <p className="mt-1 text-xs text-gray-500">Opcional</p>
               </div>
+              <div>
+                <label htmlFor="direccion" className="block text-sm font-medium text-gray-700 mb-1">
+                  Dirección
+                </label>
+                <input
+                  id="direccion"
+                  name="direccion"
+                  type="text"
+                  value={tutorForm.direccion}
+                  onChange={handleTutorChange}
+                  className={fieldClass}
+                />
+                <p className="mt-1 text-xs text-gray-500">Opcional</p>
+              </div>
             </div>
           )}
 
@@ -611,6 +646,37 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
                 <option value="si">Sí</option>
                 <option value="no">No</option>
               </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="fecha_nacimiento" className="block text-sm font-medium text-gray-700 mb-1">
+                Fecha de nacimiento
+              </label>
+              <input
+                id="fecha_nacimiento"
+                name="fecha_nacimiento"
+                type="date"
+                value={petForm.fecha_nacimiento}
+                onChange={handlePetChange}
+                className={fieldClass}
+              />
+            </div>
+            <div>
+              <label htmlFor="peso" className="block text-sm font-medium text-gray-700 mb-1">
+                Peso (kg)
+              </label>
+              <input
+                id="peso"
+                name="peso"
+                type="number"
+                step="0.1"
+                min="0"
+                value={petForm.peso}
+                onChange={handlePetChange}
+                className={fieldClass}
+              />
             </div>
           </div>
 

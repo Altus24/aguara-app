@@ -31,6 +31,7 @@ import {
   CANTIDAD_SIN_CONFIG,
   DEFAULT_TIRADA_CANTIDAD,
   TIRADA_CANTIDAD_OPTIONS,
+  clearAllTiradaConfigs,
   deleteTiradaConfig,
   getTiradaConfig,
   loadAllTiradaConfigs,
@@ -126,12 +127,14 @@ export default function AdminDashboard() {
       }
 
       setMascotas(mascotasData);
-      if (inventarioRes.data?.tirada_actual) {
-        setTiradaActual(inventarioRes.data.tirada_actual);
+      if (inventarioRes.data && inventarioRes.data.tirada_actual != null) {
+        setTiradaActual(Number(inventarioRes.data.tirada_actual) || 0);
       } else if (inventarioRes.data?.max_id_numerico) {
         setTiradaActual(
-          Math.max(1, Math.floor(inventarioRes.data.max_id_numerico / CHAPITAS_PER_TIRADA))
+          Math.max(0, Math.floor(inventarioRes.data.max_id_numerico / CHAPITAS_PER_TIRADA))
         );
+      } else {
+        setTiradaActual(0);
       }
       setMessage('');
     }
@@ -470,7 +473,9 @@ export default function AdminDashboard() {
     }
     if (
       !(await confirmEliminar(
-        `la tirada T${tirada} y todas sus fichas activadas en ese lote`,
+        tirada === 1
+          ? 'la tirada T1 y dejar el inventario vacío para empezar de nuevo'
+          : `la tirada T${tirada} y todas sus fichas activadas en ese lote`,
       ))
     ) {
       return;
@@ -484,18 +489,48 @@ export default function AdminDashboard() {
           ? 'Sin permisos para eliminar tiradas.'
           : error.message?.includes('eliminar_ultima_tirada') ||
               error.message?.includes('Could not find')
-            ? 'No se pudo eliminar. Ejecutá supabase/chapitas/23_eliminar_tirada.sql en Supabase.'
+            ? 'No se pudo eliminar. Ejecutá supabase/chapitas/25_eliminar_tirada_vacia.sql en Supabase.'
             : 'No se pudo eliminar la tirada.',
       );
       return;
     }
-    deleteTiradaConfig(tirada);
-    setTiradaConfigs(loadAllTiradaConfigs());
+    if (data?.reinicio || Number(data?.tirada_actual) === 0) {
+      clearAllTiradaConfigs();
+      setTiradaConfigs({});
+    } else {
+      deleteTiradaConfig(tirada);
+      setTiradaConfigs(loadAllTiradaConfigs());
+    }
     setSuccessMessage(
-      data?.reinicio
-        ? `Tirada T${tirada} vaciada. El inventario quedó en T1.`
+      data?.reinicio || Number(data?.tirada_actual) === 0
+        ? 'Inventario vacío. Ya podés crear T1 con la config nueva.'
         : `Tirada T${data?.tirada_eliminada || tirada} eliminada.`,
     );
+    await loadData();
+  };
+
+  const handleReiniciarInventario = async () => {
+    if (
+      !(await confirmAccion(
+        '¿Vaciar TODO el inventario de chapitas (todas las tiradas y fichas activadas)? Vas a poder crear T1 de nuevo desde cero.',
+      ))
+    ) {
+      return;
+    }
+    setMessage('');
+    setSuccessMessage('');
+    const { error } = await supabase.rpc('reset_todas_las_tiradas');
+    if (error) {
+      setMessage(
+        error.message?.includes('not authorized')
+          ? 'Sin permisos para reiniciar el inventario.'
+          : 'No se pudo reiniciar. Ejecutá supabase/chapitas/25_eliminar_tirada_vacia.sql en Supabase.',
+      );
+      return;
+    }
+    clearAllTiradaConfigs();
+    setTiradaConfigs({});
+    setSuccessMessage('Inventario reiniciado. Creá una tirada nueva cuando quieras.');
     await loadData();
   };
 
@@ -869,21 +904,31 @@ export default function AdminDashboard() {
             <>
           <div className="mb-8 rounded-lg bg-white p-6 shadow-md">
             <h2 className="text-xl font-semibold text-blue-700 mb-3">Inventario de chapitas</h2>
-            <p className="mb-4 text-sm text-gray-600">
-              Tirada 1: T1-001–T1-100. Tirada 2: 200–299. Tirada 3: 300–399. Cantidad y
-              plantilla se eligen al crear la tirada y después quedan fijas.
-            </p>
+            
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 text-sm mb-4">
               <div className="rounded-md bg-blue-50 p-4">
                 <p className="text-gray-600">Sin activar</p>
                 <p className="text-3xl font-bold text-blue-800">{sinActivarTotal}</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  de {stockTotal} ({tiradaActual} tirada{tiradaActual === 1 ? '' : 's'})
+                  de {stockTotal} (
+                  {tiradaActual === 0
+                    ? 'sin tiradas'
+                    : `${tiradaActual} tirada${tiradaActual === 1 ? '' : 's'}`}
+                  )
                 </p>
               </div>
               <div className="rounded-md bg-green-50 p-4">
                 <p className="text-gray-600">Activadas</p>
                 <p className="text-3xl font-bold text-green-800">{activadasTotal}</p>
+                {tiradaActual > 0 ? (
+                  <button
+                    type="button"
+                    onClick={handleReiniciarInventario}
+                    className="mt-3 text-xs text-red-700 underline"
+                  >
+                    Reiniciar inventario
+                  </button>
+                ) : null}
               </div>
               <div className="rounded-md border border-blue-100 bg-blue-50/70 p-4 space-y-3 sm:col-span-2 lg:col-span-1">
                 <p className="text-sm font-medium text-blue-900">
@@ -940,12 +985,7 @@ export default function AdminDashboard() {
                       : 'Creando tirada...'
                     : `Crear tirada ${nextTirada} (${nuevaTiradaCantidad} QR)`}
                 </button>
-                <p className="text-xs text-gray-500">
-                  Genera {nuevaTiradaCantidad} QR (
-                  {formatTiradaChapitaId(nextTirada, 1)}–
-                  {formatTiradaChapitaId(nextTirada, nuevaTiradaCantidad)}). Después descargá ZIP o
-                  PDF por separado.
-                </p>
+                
               </div>
             </div>
 
@@ -1003,7 +1043,7 @@ export default function AdminDashboard() {
                             >
                               {busy && zipProgress.phase === 'zip'
                                 ? `ZIP ${zipProgress.done}/${zipProgress.total}`
-                                : 'Descargar ZIP'}
+                                : 'ZIP'}
                             </button>
                             <button
                               type="button"
@@ -1013,7 +1053,7 @@ export default function AdminDashboard() {
                             >
                               {busy && (zipProgress.phase === 'pdf' || zipProgress.phase === 'generar')
                                 ? `PDF ${zipProgress.done}/${zipProgress.total}`
-                                : 'Descargar PDF'}
+                                : 'PDF'}
                             </button>
                           </div>
                         </td>

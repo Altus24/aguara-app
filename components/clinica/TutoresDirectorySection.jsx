@@ -84,8 +84,9 @@ export default function TutoresDirectorySection({ clinicaId, clinicaNombre }) {
       <div>
         <h2 className="text-lg font-semibold text-aguara-ink">Tutores Aguará</h2>
         <p className="text-sm text-stone-500">
-          Solo ves nombre del tutor y de sus mascotas. Para más datos, pedí acceso: el tutor debe
-          aceptar.
+          Por defecto solo ves el nombre del tutor y de sus mascotas. La ficha completa queda para
+          las mascotas que piden turno. Si necesitás más datos de otra mascota, pedí acceso: el
+          tutor debe aceptar.
         </p>
       </div>
 
@@ -143,12 +144,31 @@ export default function TutoresDirectorySection({ clinicaId, clinicaNombre }) {
           {perfil.mascotas.length === 0 ? (
             <p className="mt-1 text-sm text-stone-500">Sin mascotas con chapita.</p>
           ) : (
-            <ul className="mt-2 space-y-1 text-sm">
+            <ul className="mt-2 space-y-2 text-sm">
               {perfil.mascotas.map((m) => (
-                <li key={m.id}>
+                <li
+                  key={m.id}
+                  className={
+                    m.acceso === "completo"
+                      ? "rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-2"
+                      : "rounded-xl border border-stone-200 bg-stone-50 px-3 py-2"
+                  }
+                >
                   <strong>{m.nombre_mascota}</strong>
-                  {m.especie ? ` · ${m.especie}` : ""}
-                  {m.raza ? ` · ${m.raza}` : ""}
+                  {m.acceso === "completo" ? (
+                    <>
+                      {m.especie ? ` · ${m.especie}` : ""}
+                      {m.raza ? ` · ${m.raza}` : ""}
+                      {m.sexo ? ` · ${m.sexo}` : ""}
+                      <span className="mt-1 block text-xs text-emerald-800">
+                        Ficha visible (turno / autorizada)
+                      </span>
+                    </>
+                  ) : (
+                    <span className="mt-1 block text-xs text-stone-500">
+                      Solo nombre · pedí acceso para ver el resto
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -189,14 +209,24 @@ export default function TutoresDirectorySection({ clinicaId, clinicaNombre }) {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {estado === "aceptada" ? (
-                      <button
-                        type="button"
-                        className={primaryBtnClass}
-                        disabled={busyId === t.id}
-                        onClick={() => verPerfilCompartido(t)}
-                      >
-                        Ver perfil
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className={primaryBtnClass}
+                          disabled={busyId === t.id}
+                          onClick={() => verPerfilCompartido(t)}
+                        >
+                          Ver perfil
+                        </button>
+                        <button
+                          type="button"
+                          className={secondaryBtnClass}
+                          disabled={busyId === t.id}
+                          onClick={() => pedirAcceso(t)}
+                        >
+                          Pedir otra mascota
+                        </button>
+                      </>
                     ) : (
                       <button
                         type="button"

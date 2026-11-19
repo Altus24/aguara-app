@@ -34,6 +34,9 @@ import {
   listarVeterinarios,
   obtenerPaciente,
 } from "@/lib/chapitas/clinicaOps";
+import { confirmGuardar } from "@/lib/confirmAction";
+
+const ESPECIES = ["Perro", "Gato", "Ave", "Conejo", "Otro"];
 
 export default function PacientesSection({ clinicaId }) {
   const [q, setQ] = useState("");
@@ -157,14 +160,21 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
   const [form, setForm] = useState({
     cliente_id: "",
     nombre: "",
-    especie: "Canino",
+    especie: "Perro",
     raza: "",
     sexo: "",
+    fecha_nacimiento: "",
     peso: "",
+    color: "",
     chip: "",
     alergias: "",
+    notas: "",
+    chapita_codigo: "",
     nuevo_cliente_nombre: "",
+    nuevo_cliente_email: "",
     nuevo_cliente_telefono: "",
+    nuevo_cliente_telefono_secundario: "",
+    nuevo_cliente_direccion: "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -172,20 +182,45 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (!(await confirmGuardar("el nuevo paciente"))) return;
     setSaving(true);
     setError("");
     try {
       let clienteId = form.cliente_id;
       if (crearDueño) {
+        if (!form.nuevo_cliente_nombre.trim() || !form.nuevo_cliente_telefono.trim()) {
+          throw new Error("Completá nombre y teléfono del dueño.");
+        }
+        if (!form.nuevo_cliente_email.trim()) {
+          throw new Error("El email del dueño es obligatorio para que figure en Tutores Aguará.");
+        }
         const cliente = await crearCliente(clinicaId, {
           nombre_completo: form.nuevo_cliente_nombre,
+          email: form.nuevo_cliente_email,
           telefono: form.nuevo_cliente_telefono,
+          telefono_secundario: form.nuevo_cliente_telefono_secundario,
+          direccion: form.nuevo_cliente_direccion,
         });
         clienteId = cliente.id;
         await onClientCreated();
       }
       if (!clienteId) throw new Error("Seleccioná o creá un dueño.");
-      await crearPaciente(clinicaId, { ...form, cliente_id: clienteId });
+      if (!form.nombre.trim()) throw new Error("Completá el nombre de la mascota.");
+      if (!form.sexo) throw new Error("Seleccioná el sexo de la mascota.");
+      await crearPaciente(clinicaId, {
+        cliente_id: clienteId,
+        nombre: form.nombre,
+        especie: form.especie,
+        raza: form.raza,
+        sexo: form.sexo,
+        fecha_nacimiento: form.fecha_nacimiento,
+        peso: form.peso,
+        color: form.color,
+        chip: form.chip,
+        alergias: form.alergias,
+        notas: form.notas,
+        chapita_codigo: form.chapita_codigo,
+      });
       await onCreated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear.");
@@ -195,7 +230,7 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
   }
 
   return (
-    <form onSubmit={handleSubmit} className={`${cardClass} space-y-3`}>
+    <form onSubmit={handleSubmit} className={`${cardClass} space-y-4`}>
       <h3 className="font-semibold text-aguara-ink">Nueva mascota</h3>
       <label className="flex items-center gap-2 text-sm text-stone-700">
         <input
@@ -206,28 +241,76 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
         Crear dueño nuevo
       </label>
       {crearDueño ? (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Nombre del dueño" id="np-dueno">
-            <input
-              id="np-dueno"
-              required
-              className={fieldClass}
-              value={form.nuevo_cliente_nombre}
-              onChange={(e) => setForm((f) => ({ ...f, nuevo_cliente_nombre: e.target.value }))}
-            />
-          </Field>
-          <Field label="Teléfono" id="np-tel">
-            <input
-              id="np-tel"
-              required
-              className={fieldClass}
-              value={form.nuevo_cliente_telefono}
-              onChange={(e) => setForm((f) => ({ ...f, nuevo_cliente_telefono: e.target.value }))}
-            />
-          </Field>
+        <div className="space-y-3 rounded-xl border border-stone-200 bg-stone-50/70 p-3">
+          <p className="text-sm font-medium text-aguara-ink">Datos del dueño</p>
+          <p className="text-xs text-stone-500">
+            Con email y teléfono también queda como tutor Aguará y aparece en el buscador de
+            Tutores.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Nombre completo *" id="np-dueno">
+              <input
+                id="np-dueno"
+                required
+                className={fieldClass}
+                value={form.nuevo_cliente_nombre}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, nuevo_cliente_nombre: e.target.value }))
+                }
+              />
+            </Field>
+            <Field label="Teléfono *" id="np-tel">
+              <input
+                id="np-tel"
+                type="tel"
+                required
+                className={fieldClass}
+                value={form.nuevo_cliente_telefono}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, nuevo_cliente_telefono: e.target.value }))
+                }
+              />
+            </Field>
+            <Field label="Email *" id="np-email">
+              <input
+                id="np-email"
+                type="email"
+                required
+                className={fieldClass}
+                value={form.nuevo_cliente_email}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, nuevo_cliente_email: e.target.value }))
+                }
+              />
+            </Field>
+            <Field label="Tel. secundario" id="np-tel2">
+              <input
+                id="np-tel2"
+                type="tel"
+                className={fieldClass}
+                value={form.nuevo_cliente_telefono_secundario}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    nuevo_cliente_telefono_secundario: e.target.value,
+                  }))
+                }
+              />
+            </Field>
+            <Field label="Dirección" id="np-dir" className="sm:col-span-2">
+              <input
+                id="np-dir"
+                className={fieldClass}
+                value={form.nuevo_cliente_direccion}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, nuevo_cliente_direccion: e.target.value }))
+                }
+              />
+            </Field>
+          </div>
         </div>
       ) : (
-        <Field label="Dueño" id="np-cliente">
+        <Field label="Dueño *" id="np-cliente">
           <select
             id="np-cliente"
             required
@@ -239,76 +322,129 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
             {clientes.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.nombre_completo}
+                {c.telefono ? ` · ${c.telefono}` : ""}
               </option>
             ))}
           </select>
         </Field>
       )}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Nombre" id="np-nombre">
-          <input
-            id="np-nombre"
-            required
-            className={fieldClass}
-            value={form.nombre}
-            onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
-          />
-        </Field>
-        <Field label="Especie" id="np-especie">
-          <input
-            id="np-especie"
-            className={fieldClass}
-            value={form.especie}
-            onChange={(e) => setForm((f) => ({ ...f, especie: e.target.value }))}
-          />
-        </Field>
-        <Field label="Raza" id="np-raza">
-          <input
-            id="np-raza"
-            className={fieldClass}
-            value={form.raza}
-            onChange={(e) => setForm((f) => ({ ...f, raza: e.target.value }))}
-          />
-        </Field>
-        <Field label="Sexo" id="np-sexo">
-          <select
-            id="np-sexo"
-            className={fieldClass}
-            value={form.sexo}
-            onChange={(e) => setForm((f) => ({ ...f, sexo: e.target.value }))}
-          >
-            <option value="">—</option>
-            <option value="Macho">Macho</option>
-            <option value="Hembra">Hembra</option>
-          </select>
-        </Field>
-        <Field label="Peso (kg)" id="np-peso">
-          <input
-            id="np-peso"
-            type="number"
-            step="0.1"
-            className={fieldClass}
-            value={form.peso}
-            onChange={(e) => setForm((f) => ({ ...f, peso: e.target.value }))}
-          />
-        </Field>
-        <Field label="Chip" id="np-chip">
-          <input
-            id="np-chip"
-            className={fieldClass}
-            value={form.chip}
-            onChange={(e) => setForm((f) => ({ ...f, chip: e.target.value }))}
-          />
-        </Field>
+
+      <div className="space-y-3">
+        <p className="text-sm font-medium text-aguara-ink">Datos de la mascota</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Nombre *" id="np-nombre">
+            <input
+              id="np-nombre"
+              required
+              className={fieldClass}
+              value={form.nombre}
+              onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
+            />
+          </Field>
+          <Field label="Especie *" id="np-especie">
+            <select
+              id="np-especie"
+              required
+              className={fieldClass}
+              value={form.especie}
+              onChange={(e) => setForm((f) => ({ ...f, especie: e.target.value }))}
+            >
+              {ESPECIES.map((esp) => (
+                <option key={esp} value={esp}>
+                  {esp}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Raza" id="np-raza">
+            <input
+              id="np-raza"
+              className={fieldClass}
+              value={form.raza}
+              onChange={(e) => setForm((f) => ({ ...f, raza: e.target.value }))}
+            />
+          </Field>
+          <Field label="Sexo *" id="np-sexo">
+            <select
+              id="np-sexo"
+              required
+              className={fieldClass}
+              value={form.sexo}
+              onChange={(e) => setForm((f) => ({ ...f, sexo: e.target.value }))}
+            >
+              <option value="">Elegí…</option>
+              <option value="Macho">Macho</option>
+              <option value="Hembra">Hembra</option>
+            </select>
+          </Field>
+          <Field label="Fecha de nacimiento" id="np-fnac">
+            <input
+              id="np-fnac"
+              type="date"
+              className={fieldClass}
+              value={form.fecha_nacimiento}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, fecha_nacimiento: e.target.value }))
+              }
+            />
+          </Field>
+          <Field label="Peso (kg)" id="np-peso">
+            <input
+              id="np-peso"
+              type="number"
+              step="0.1"
+              min="0"
+              className={fieldClass}
+              value={form.peso}
+              onChange={(e) => setForm((f) => ({ ...f, peso: e.target.value }))}
+            />
+          </Field>
+          <Field label="Color" id="np-color">
+            <input
+              id="np-color"
+              className={fieldClass}
+              value={form.color}
+              onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
+            />
+          </Field>
+          <Field label="N° de chip" id="np-chip">
+            <input
+              id="np-chip"
+              className={fieldClass}
+              value={form.chip}
+              onChange={(e) => setForm((f) => ({ ...f, chip: e.target.value }))}
+            />
+          </Field>
+          <Field label="Código chapita (opcional)" id="np-chapita">
+            <input
+              id="np-chapita"
+              className={fieldClass}
+              placeholder="Ej. T1-004"
+              value={form.chapita_codigo}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, chapita_codigo: e.target.value }))
+              }
+            />
+          </Field>
+          <Field label="Alergias" id="np-alergias">
+            <input
+              id="np-alergias"
+              className={fieldClass}
+              value={form.alergias}
+              onChange={(e) => setForm((f) => ({ ...f, alergias: e.target.value }))}
+            />
+          </Field>
+          <Field label="Notas" id="np-notas" className="sm:col-span-2">
+            <textarea
+              id="np-notas"
+              rows={2}
+              className={fieldClass}
+              value={form.notas}
+              onChange={(e) => setForm((f) => ({ ...f, notas: e.target.value }))}
+            />
+          </Field>
+        </div>
       </div>
-      <Field label="Alergias" id="np-alergias">
-        <input
-          id="np-alergias"
-          className={fieldClass}
-          value={form.alergias}
-          onChange={(e) => setForm((f) => ({ ...f, alergias: e.target.value }))}
-        />
-      </Field>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       <button type="submit" disabled={saving} className={primaryBtnClass}>
         {saving ? "Guardando…" : "Guardar paciente"}
@@ -332,10 +468,10 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
       setLoading(true);
       setError("");
       try {
-        const [p, c, v, d, a] = await Promise.all([
-          obtenerPaciente(pacienteId),
+        const p = await obtenerPaciente(pacienteId);
+        const [c, v, d, a] = await Promise.all([
           listarConsultas(clinicaId, { pacienteId }),
-          listarVacunas(pacienteId),
+          listarVacunasPacienteCompletas(p),
           listarDesparasitaciones(pacienteId),
           listarArchivos(pacienteId),
         ]);

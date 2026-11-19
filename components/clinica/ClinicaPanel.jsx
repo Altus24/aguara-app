@@ -32,8 +32,20 @@ export default function ClinicaPanel() {
   const { clinica, isAuthenticated, authLoading, signOut, refreshClinica } = useClinicAuth();
   const router = useRouter();
   const [tab, setTab] = useState("dashboard");
+  const [agendaFocusPendientes, setAgendaFocusPendientes] = useState(false);
   const [pendientes, setPendientes] = useState(0);
   const [notifs, setNotifs] = useState([]);
+
+  function goAgenda({ focusPendientes = false } = {}) {
+    setAgendaFocusPendientes(focusPendientes);
+    setTab("agenda");
+    requestAnimationFrame(() => {
+      document.getElementById("clinica-agenda")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -123,7 +135,7 @@ export default function ClinicaPanel() {
               <button
                 type="button"
                 className="rounded-full bg-aguara-orange px-4 py-2 text-sm font-medium text-white"
-                onClick={() => setTab("agenda")}
+                onClick={() => goAgenda({ focusPendientes: true })}
               >
                 Ir a agenda
               </button>
@@ -168,13 +180,26 @@ export default function ClinicaPanel() {
 
       <div className="mt-6">
         {tab === "dashboard" ? (
-          <DashboardSection clinicaId={clinica.id} onNavigate={setTab} />
+          <DashboardSection
+            clinicaId={clinica.id}
+            onNavigate={(next) =>
+              next === "agenda" ? goAgenda({ focusPendientes: true }) : setTab(next)
+            }
+          />
         ) : null}
         {tab === "tutores" ? (
           <TutoresDirectorySection clinicaId={clinica.id} clinicaNombre={clinica.nombre} />
         ) : null}
         {tab === "pacientes" ? <PacientesSection clinicaId={clinica.id} /> : null}
-        {tab === "agenda" ? <AgendaSection clinicaId={clinica.id} /> : null}
+        {tab === "agenda" ? (
+          <div id="clinica-agenda">
+            <AgendaSection
+              clinicaId={clinica.id}
+              focusPendientes={agendaFocusPendientes}
+              onFocusPendientesConsumed={() => setAgendaFocusPendientes(false)}
+            />
+          </div>
+        ) : null}
         {tab === "historias" ? <HistoriasSection clinicaId={clinica.id} /> : null}
         {tab === "clientes" ? (
           <ClientesSection clinicaId={clinica.id} clinicaNombre={clinica.nombre} />
