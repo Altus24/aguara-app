@@ -19,9 +19,9 @@ import {
   crearDesparasitacion,
   crearRecordatorio,
   crearVacuna,
-  listarArchivos,
+  listarArchivosPacienteCompletas,
   listarConsultas,
-  listarDesparasitaciones,
+  listarDesparasitacionesPacienteCompletas,
   listarPacientes,
   listarVacunasPacienteCompletas,
   listarVeterinarios,
@@ -128,6 +128,9 @@ export default function HistoriasSection({ clinicaId }) {
                     <p className="text-sm text-stone-500">
                       {c.motivo || "Consulta"} · {c.clinica_veterinarios?.nombre || "Sin vet"} ·{" "}
                       {c.cerrada ? "Cerrada" : "Abierta"}
+                      {c.clinica_id && c.clinica_id !== clinicaId
+                        ? ` · compartida (${c.clinicas?.nombre || "otra clínica"})`
+                        : ""}
                     </p>
                     <p className="mt-0.5 text-xs text-stone-400">
                       Última modificación:{" "}
@@ -396,8 +399,8 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
         const pac = await obtenerPaciente(c.paciente_id);
         const [vacunasFull, despRows, arch] = await Promise.all([
           listarVacunasPacienteCompletas(pac),
-          listarDesparasitaciones(c.paciente_id),
-          listarArchivos(c.paciente_id),
+          listarDesparasitacionesPacienteCompletas(pac),
+          listarArchivosPacienteCompletas(pac),
         ]);
         setPaciente(pac);
         setVacunas(vacunasFull);

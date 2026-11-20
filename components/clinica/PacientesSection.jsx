@@ -30,10 +30,10 @@ import {
   eliminarArchivo,
   eliminarDesparasitacion,
   eliminarVacuna,
-  listarArchivos,
+  listarArchivosPacienteCompletas,
   listarClientes,
   listarConsultas,
-  listarDesparasitaciones,
+  listarDesparasitacionesPacienteCompletas,
   listarPacientes,
   listarVacunasPacienteCompletas,
   listarVeterinarios,
@@ -441,8 +441,8 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
         const [c, v, d, a, vetsRows, serviciosRows, clientesRows] = await Promise.all([
           listarConsultas(clinicaId, { pacienteId }),
           listarVacunasPacienteCompletas(p),
-          listarDesparasitaciones(pacienteId),
-          listarArchivos(pacienteId),
+          listarDesparasitacionesPacienteCompletas(p),
+          listarArchivosPacienteCompletas(p),
           listarVeterinarios(clinicaId),
           listarServiciosActivos(clinicaId),
           listarClientes(clinicaId),
@@ -537,6 +537,9 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
 
       <div className={cardClass}>
         <h3 className="font-semibold text-aguara-ink">Historial completo</h3>
+        <p className="mt-1 text-xs text-stone-500">
+          Incluye historias de otras clínicas con la misma chapita (solo lectura).
+        </p>
         {consultas.length === 0 ? (
           <p className="mt-3 text-sm text-stone-500">Sin consultas registradas.</p>
         ) : (
@@ -546,6 +549,9 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
                 <p className="font-medium text-aguara-ink">
                   {formatDateTime(c.fecha)}
                   {c.cerrada ? " · Cerrada" : " · Abierta"}
+                  {c.clinica_id && c.clinica_id !== clinicaId
+                    ? ` · compartida (${c.clinicas?.nombre || "otra clínica"})`
+                    : ""}
                 </p>
                 <p className="text-sm text-stone-600">{c.motivo || "Consulta"}</p>
                 {c.diagnostico ? (
