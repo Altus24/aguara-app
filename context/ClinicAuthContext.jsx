@@ -73,8 +73,9 @@ export function ClinicAuthProvider({ children }) {
   }, []);
 
   const refreshClinica = useCallback((next) => {
+    if (!next?.id) return;
     writeClinicSession(next);
-    setClinica(next);
+    setClinica((prev) => ({ ...(prev || {}), ...next }));
   }, []);
 
   const signOut = useCallback(() => {

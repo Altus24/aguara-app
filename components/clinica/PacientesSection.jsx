@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import CitaForm from "@/components/clinica/CitaForm";
 import {
   cardClass,
   Field,
@@ -11,6 +12,10 @@ import {
   primaryBtnClass,
   secondaryBtnClass,
 } from "@/components/clinica/ui";
+import MascotaRegistroFields, {
+  EMPTY_PET_FORM,
+  validateMascotaRegistroForm,
+} from "@/components/mascotas/MascotaRegistroFields";
 import {
   actualizarArchivo,
   actualizarConsulta,
@@ -34,9 +39,13 @@ import {
   listarVeterinarios,
   obtenerPaciente,
 } from "@/lib/chapitas/clinicaOps";
+import { listarServiciosActivos } from "@/lib/chapitas/clinicas";
+import { supabase } from "@/lib/chapitas/supabaseClient";
+import { esVacunaVencida } from "@/lib/chapitas/vacunas";
 import { confirmGuardar } from "@/lib/confirmAction";
 
-const ESPECIES = ["Perro", "Gato", "Ave", "Conejo", "Otro"];
+const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
+const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export default function PacientesSection({ clinicaId }) {
   const [q, setQ] = useState("");
@@ -159,29 +168,80 @@ export default function PacientesSection({ clinicaId }) {
 function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) {
   const [form, setForm] = useState({
     cliente_id: "",
-    nombre: "",
-    especie: "Perro",
-    raza: "",
-    sexo: "",
-    fecha_nacimiento: "",
-    peso: "",
-    color: "",
-    chip: "",
-    alergias: "",
-    notas: "",
     chapita_codigo: "",
     nuevo_cliente_nombre: "",
     nuevo_cliente_email: "",
     nuevo_cliente_telefono: "",
     nuevo_cliente_telefono_secundario: "",
     nuevo_cliente_direccion: "",
+    ...EMPTY_PET_FORM,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [crearDueño, setCrearDueño] = useState(false);
+  const [foto, setFoto] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const previewRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    };
+  }, []);
+
+  function handlePhoto(event) {
+    const file = event.target.files?.[0] ?? null;
+    if (!file) {
+      if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+      previewRef.current = null;
+      setFoto(null);
+      setPreview(null);
+      return;
+    }
+    if (!PHOTO_TYPES.has(file.type)) {
+      setError("La foto tiene que ser JPG, PNG o WebP.");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > MAX_PHOTO_BYTES) {
+      setError("La foto no puede superar 4 MB.");
+      event.target.value = "";
+      return;
+    }
+    setError("");
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    const url = URL.createObjectURL(file);
+    previewRef.current = url;
+    setFoto(file);
+    setPreview(url);
+  }
+
+  async function uploadFotoPaciente() {
+    if (!foto) return null;
+    const extension =
+      foto.type === "image/png" ? "png" : foto.type === "image/webp" ? "webp" : "jpg";
+    const path = `clinica/${clinicaId}/${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await supabase.storage
+      .from("mascotas-fotos")
+      .upload(path, foto, { contentType: foto.type, upsert: false });
+    if (uploadError) {
+      throw new Error(
+        /bucket not found/i.test(uploadError.message)
+          ? "Falta el bucket mascotas-fotos."
+          : "No se pudo subir la foto.",
+      );
+    }
+    const { data } = supabase.storage.from("mascotas-fotos").getPublicUrl(path);
+    return data.publicUrl;
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
+    const invalid = validateMascotaRegistroForm(form);
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
     if (!(await confirmGuardar("el nuevo paciente"))) return;
     setSaving(true);
     setError("");
@@ -205,20 +265,21 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
         await onClientCreated();
       }
       if (!clienteId) throw new Error("Seleccioná o creá un dueño.");
-      if (!form.nombre.trim()) throw new Error("Completá el nombre de la mascota.");
-      if (!form.sexo) throw new Error("Seleccioná el sexo de la mascota.");
+      const fotoUrl = await uploadFotoPaciente();
       await crearPaciente(clinicaId, {
         cliente_id: clienteId,
-        nombre: form.nombre,
+        nombre: form.nombre_mascota,
         especie: form.especie,
         raza: form.raza,
         sexo: form.sexo,
+        castrado: form.castrado,
         fecha_nacimiento: form.fecha_nacimiento,
         peso: form.peso,
-        color: form.color,
-        chip: form.chip,
-        alergias: form.alergias,
-        notas: form.notas,
+        nro_chip: form.nro_chip,
+        enfermedad: form.enfermedad,
+        medicacion: form.medicacion,
+        datos_adicionales: form.datos_adicionales,
+        foto_url: fotoUrl,
         chapita_codigo: form.chapita_codigo,
       });
       await onCreated();
@@ -329,122 +390,25 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
         </Field>
       )}
 
-      <div className="space-y-3">
-        <p className="text-sm font-medium text-aguara-ink">Datos de la mascota</p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Nombre *" id="np-nombre">
-            <input
-              id="np-nombre"
-              required
-              className={fieldClass}
-              value={form.nombre}
-              onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
-            />
-          </Field>
-          <Field label="Especie *" id="np-especie">
-            <select
-              id="np-especie"
-              required
-              className={fieldClass}
-              value={form.especie}
-              onChange={(e) => setForm((f) => ({ ...f, especie: e.target.value }))}
-            >
-              {ESPECIES.map((esp) => (
-                <option key={esp} value={esp}>
-                  {esp}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Raza" id="np-raza">
-            <input
-              id="np-raza"
-              className={fieldClass}
-              value={form.raza}
-              onChange={(e) => setForm((f) => ({ ...f, raza: e.target.value }))}
-            />
-          </Field>
-          <Field label="Sexo *" id="np-sexo">
-            <select
-              id="np-sexo"
-              required
-              className={fieldClass}
-              value={form.sexo}
-              onChange={(e) => setForm((f) => ({ ...f, sexo: e.target.value }))}
-            >
-              <option value="">Elegí…</option>
-              <option value="Macho">Macho</option>
-              <option value="Hembra">Hembra</option>
-            </select>
-          </Field>
-          <Field label="Fecha de nacimiento" id="np-fnac">
-            <input
-              id="np-fnac"
-              type="date"
-              className={fieldClass}
-              value={form.fecha_nacimiento}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, fecha_nacimiento: e.target.value }))
-              }
-            />
-          </Field>
-          <Field label="Peso (kg)" id="np-peso">
-            <input
-              id="np-peso"
-              type="number"
-              step="0.1"
-              min="0"
-              className={fieldClass}
-              value={form.peso}
-              onChange={(e) => setForm((f) => ({ ...f, peso: e.target.value }))}
-            />
-          </Field>
-          <Field label="Color" id="np-color">
-            <input
-              id="np-color"
-              className={fieldClass}
-              value={form.color}
-              onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
-            />
-          </Field>
-          <Field label="N° de chip" id="np-chip">
-            <input
-              id="np-chip"
-              className={fieldClass}
-              value={form.chip}
-              onChange={(e) => setForm((f) => ({ ...f, chip: e.target.value }))}
-            />
-          </Field>
-          <Field label="Código chapita (opcional)" id="np-chapita">
-            <input
-              id="np-chapita"
-              className={fieldClass}
-              placeholder="Ej. T1-004"
-              value={form.chapita_codigo}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, chapita_codigo: e.target.value }))
-              }
-            />
-          </Field>
-          <Field label="Alergias" id="np-alergias">
-            <input
-              id="np-alergias"
-              className={fieldClass}
-              value={form.alergias}
-              onChange={(e) => setForm((f) => ({ ...f, alergias: e.target.value }))}
-            />
-          </Field>
-          <Field label="Notas" id="np-notas" className="sm:col-span-2">
-            <textarea
-              id="np-notas"
-              rows={2}
-              className={fieldClass}
-              value={form.notas}
-              onChange={(e) => setForm((f) => ({ ...f, notas: e.target.value }))}
-            />
-          </Field>
-        </div>
-      </div>
+      <MascotaRegistroFields
+        form={form}
+        onChange={(name, value) => setForm((f) => ({ ...f, [name]: value }))}
+        preview={preview}
+        onPhoto={handlePhoto}
+        fieldClass={fieldClass}
+        fotoInputId="np-foto"
+      />
+
+      <Field label="Código chapita (opcional)" id="np-chapita">
+        <input
+          id="np-chapita"
+          className={fieldClass}
+          placeholder="Ej. T1-004 — dejar vacío si aún no tiene"
+          value={form.chapita_codigo}
+          onChange={(e) => setForm((f) => ({ ...f, chapita_codigo: e.target.value }))}
+        />
+      </Field>
+
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       <button type="submit" disabled={saving} className={primaryBtnClass}>
         {saving ? "Guardando…" : "Guardar paciente"}
@@ -459,8 +423,13 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
   const [vacunas, setVacunas] = useState([]);
   const [desparas, setDesparas] = useState([]);
   const [archivos, setArchivos] = useState([]);
+  const [vets, setVets] = useState([]);
+  const [servicios, setServicios] = useState([]);
+  const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showCitaForm, setShowCitaForm] = useState(false);
+  const [citaMsg, setCitaMsg] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -469,11 +438,14 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
       setError("");
       try {
         const p = await obtenerPaciente(pacienteId);
-        const [c, v, d, a] = await Promise.all([
+        const [c, v, d, a, vetsRows, serviciosRows, clientesRows] = await Promise.all([
           listarConsultas(clinicaId, { pacienteId }),
           listarVacunasPacienteCompletas(p),
           listarDesparasitaciones(pacienteId),
           listarArchivos(pacienteId),
+          listarVeterinarios(clinicaId),
+          listarServiciosActivos(clinicaId),
+          listarClientes(clinicaId),
         ]);
         if (!cancelled) {
           setPaciente(p);
@@ -481,6 +453,9 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
           setVacunas(v);
           setDesparas(d);
           setArchivos(a);
+          setVets((vetsRows || []).filter((vet) => vet.activo !== false));
+          setServicios(serviciosRows || []);
+          setClientes(clientesRows || []);
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Error al cargar ficha.");
@@ -500,9 +475,21 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
 
   return (
     <div className="space-y-5">
-      <button type="button" className={secondaryBtnClass} onClick={onBack}>
-        ← Volver al listado
-      </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <button type="button" className={secondaryBtnClass} onClick={onBack}>
+          ← Volver al listado
+        </button>
+        <button
+          type="button"
+          className={primaryBtnClass}
+          onClick={() => {
+            setCitaMsg("");
+            setShowCitaForm((v) => !v);
+          }}
+        >
+          {showCitaForm ? "Cerrar cita" : "Programar cita"}
+        </button>
+      </div>
 
       <div className={cardClass}>
         <h2 className="text-2xl font-semibold text-aguara-ink">{paciente.nombre}</h2>
@@ -523,6 +510,30 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
         ) : null}
         {paciente.chip ? <p className="mt-1 text-sm text-stone-500">Chip: {paciente.chip}</p> : null}
       </div>
+
+      {citaMsg ? <p className="text-sm text-emerald-700">{citaMsg}</p> : null}
+
+      {showCitaForm ? (
+        <CitaForm
+          clinicaId={clinicaId}
+          pacientes={[paciente]}
+          clientes={clientes}
+          vets={vets}
+          servicios={servicios}
+          lockPaciente
+          initial={{
+            paciente_id: paciente.id,
+            cliente_id: paciente.cliente_id || paciente.clinica_clientes?.id || "",
+            estado: "confirmada",
+          }}
+          defaultDay={new Date()}
+          onCancel={() => setShowCitaForm(false)}
+          onSaved={async () => {
+            setShowCitaForm(false);
+            setCitaMsg(`Cita programada para ${paciente.nombre}.`);
+          }}
+        />
+      ) : null}
 
       <div className={cardClass}>
         <h3 className="font-semibold text-aguara-ink">Historial completo</h3>
@@ -562,6 +573,11 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
               {vacunas.map((v) => (
                 <li key={v.id}>
                   <strong>{v.nombre}</strong> · {formatDate(v.fecha)}
+                  {esVacunaVencida(v) ? (
+                    <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-800">
+                      Vencida
+                    </span>
+                  ) : null}
                   {v.proxima_fecha ? ` · próxima ${formatDate(v.proxima_fecha)}` : ""}
                 </li>
               ))}

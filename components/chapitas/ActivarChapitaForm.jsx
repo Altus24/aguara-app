@@ -2,6 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import MascotaRegistroFields, {
+  EMPTY_PET_FORM,
+  validateMascotaRegistroForm,
+} from '@/components/mascotas/MascotaRegistroFields';
 import { confirmGuardar } from '@/lib/confirmAction';
 import { supabase, getCanonicalInsertChapitaId } from '@/lib/chapitas/supabaseClient';
 import { generateChapitaQrSvg } from '@/lib/chapitas/chapitaQr';
@@ -11,8 +15,6 @@ import {
   normalizePhoneDigits,
 } from '@/lib/chapitas/tutores';
 
-const ESPECIES = ['Perro', 'Gato'];
-const SEXOS = ['Macho', 'Hembra'];
 const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
 const PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
@@ -24,20 +26,6 @@ const initialTutorForm = {
   direccion: '',
 };
 
-const initialPetForm = {
-  nombre_mascota: '',
-  especie: 'Perro',
-  raza: '',
-  sexo: 'Macho',
-  castrado: '',
-  fecha_nacimiento: '',
-  peso: '',
-  nro_chip: '',
-  enfermedad: '',
-  medicacion: '',
-  datos_adicionales: '',
-};
-
 const fieldClass =
   'w-full rounded-md border border-gray-300 px-3 py-2 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500';
 
@@ -45,7 +33,7 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
   const [step, setStep] = useState(1);
   const [tutorMode, setTutorMode] = useState('nuevo');
   const [tutorForm, setTutorForm] = useState(initialTutorForm);
-  const [petForm, setPetForm] = useState(initialPetForm);
+  const [petForm, setPetForm] = useState(EMPTY_PET_FORM);
   const [tutorSeleccionado, setTutorSeleccionado] = useState(null);
   const [mascotasTutor, setMascotasTutor] = useState([]);
   const [lookupEmail, setLookupEmail] = useState('');
@@ -68,8 +56,7 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
     setTutorForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handlePetChange = (event) => {
-    const { name, value } = event.target;
+  const handlePetField = (name, value) => {
     setPetForm((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -147,8 +134,9 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
   };
 
   const validatePet = () => {
-    if (!petForm.nombre_mascota.trim() || !petForm.sexo || petForm.castrado === '') {
-      setError('Completá los campos obligatorios de la mascota.');
+    const msg = validateMascotaRegistroForm(petForm);
+    if (msg) {
+      setError(msg);
       return false;
     }
     return true;
@@ -258,6 +246,7 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
         raza: petForm.raza.trim() || null,
         sexo: petForm.sexo,
         castrado: petForm.castrado === 'si',
+        temperamento: petForm.temperamento || null,
         fecha_nacimiento: petForm.fecha_nacimiento || null,
         peso: petForm.peso === '' ? null : Number(petForm.peso),
         nro_chip: petForm.nro_chip.trim() || null,
@@ -277,6 +266,18 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
         .insert(mascotaPayload)
         .select()
         .single();
+
+      if (
+        insertError &&
+        /temperamento|schema cache|does not exist/i.test(insertError.message || '')
+      ) {
+        delete mascotaPayload.temperamento;
+        ({ data, error: insertError } = await supabase
+          .from('mascotas')
+          .insert(mascotaPayload)
+          .select()
+          .single());
+      }
 
       if (
         insertError &&
@@ -540,201 +541,14 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
             </button>
           </div>
 
-          <h3 className="text-base font-semibold text-stone-900 border-b border-stone-200 pb-2">
-            Datos del animal
-          </h3>
-
-          <div>
-            <label htmlFor="nombre_mascota" className="block text-sm font-medium text-gray-700 mb-1">
-              Nombre *
-            </label>
-            <input
-              id="nombre_mascota"
-              name="nombre_mascota"
-              type="text"
-              required
-              value={petForm.nombre_mascota}
-              onChange={handlePetChange}
-              className={fieldClass}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="foto" className="block text-sm font-medium text-gray-700 mb-1">
-              Foto
-            </label>
-            <input
-              id="foto"
-              name="foto"
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={handlePhoto}
-              className={`${fieldClass} py-2 file:mr-3 file:rounded-full file:border-0 file:bg-orange-50 file:px-3 file:py-1 file:text-sm file:font-medium file:text-orange-800`}
-            />
-            {preview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={preview} alt="Vista previa" className="mt-3 size-24 rounded-full object-cover" />
-            ) : null}
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="especie" className="block text-sm font-medium text-gray-700 mb-1">
-                Especie *
-              </label>
-              <select
-                id="especie"
-                name="especie"
-                value={petForm.especie}
-                onChange={handlePetChange}
-                className={fieldClass}
-              >
-                {ESPECIES.map((especie) => (
-                  <option key={especie} value={especie}>
-                    {especie}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="raza" className="block text-sm font-medium text-gray-700 mb-1">
-                Raza
-              </label>
-              <input
-                id="raza"
-                name="raza"
-                type="text"
-                value={petForm.raza}
-                onChange={handlePetChange}
-                className={fieldClass}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="sexo" className="block text-sm font-medium text-gray-700 mb-1">
-                Sexo *
-              </label>
-              <select
-                id="sexo"
-                name="sexo"
-                value={petForm.sexo}
-                onChange={handlePetChange}
-                className={fieldClass}
-              >
-                {SEXOS.map((sexo) => (
-                  <option key={sexo} value={sexo}>
-                    {sexo}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="castrado" className="block text-sm font-medium text-gray-700 mb-1">
-                Castrado *
-              </label>
-              <select
-                id="castrado"
-                name="castrado"
-                value={petForm.castrado}
-                onChange={handlePetChange}
-                required
-                className={fieldClass}
-              >
-                <option value="">Elegí una opción</option>
-                <option value="si">Sí</option>
-                <option value="no">No</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="fecha_nacimiento" className="block text-sm font-medium text-gray-700 mb-1">
-                Fecha de nacimiento
-              </label>
-              <input
-                id="fecha_nacimiento"
-                name="fecha_nacimiento"
-                type="date"
-                value={petForm.fecha_nacimiento}
-                onChange={handlePetChange}
-                className={fieldClass}
-              />
-            </div>
-            <div>
-              <label htmlFor="peso" className="block text-sm font-medium text-gray-700 mb-1">
-                Peso (kg)
-              </label>
-              <input
-                id="peso"
-                name="peso"
-                type="number"
-                step="0.1"
-                min="0"
-                value={petForm.peso}
-                onChange={handlePetChange}
-                className={fieldClass}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="nro_chip" className="block text-sm font-medium text-gray-700 mb-1">
-              N° de chip
-            </label>
-            <input
-              id="nro_chip"
-              name="nro_chip"
-              type="text"
-              value={petForm.nro_chip}
-              onChange={handlePetChange}
-              className={fieldClass}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="enfermedad" className="block text-sm font-medium text-gray-700 mb-1">
-              ¿Posee alguna enfermedad? ¿Cuál?
-            </label>
-            <textarea
-              id="enfermedad"
-              name="enfermedad"
-              rows={2}
-              value={petForm.enfermedad}
-              onChange={handlePetChange}
-              className={fieldClass}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="medicacion" className="block text-sm font-medium text-gray-700 mb-1">
-              ¿Toma alguna medicación?
-            </label>
-            <textarea
-              id="medicacion"
-              name="medicacion"
-              rows={2}
-              value={petForm.medicacion}
-              onChange={handlePetChange}
-              className={fieldClass}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="datos_adicionales" className="block text-sm font-medium text-gray-700 mb-1">
-              Datos adicionales
-            </label>
-            <textarea
-              id="datos_adicionales"
-              name="datos_adicionales"
-              rows={4}
-              value={petForm.datos_adicionales}
-              onChange={handlePetChange}
-              className={fieldClass}
-            />
-          </div>
+          <MascotaRegistroFields
+            form={petForm}
+            onChange={handlePetField}
+            preview={preview}
+            onPhoto={handlePhoto}
+            fieldClass={fieldClass}
+            fotoInputId="activar-foto"
+          />
 
           {error ? (
             <p className="text-red-600 text-sm text-center" role="alert">

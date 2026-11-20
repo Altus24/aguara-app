@@ -30,9 +30,15 @@ Solo re-ejecutá algo si falta una migración puntual. Orden original:
 24. `24_tirada_cantidades.sql` ← capacidad 165; cantidades 40/48/80/96/165
 25. `25_eliminar_tirada_vacia.sql` ← borrar T1 deja inventario vacío (tirada_actual = 0)
 26. `26_compartir_mascota.sql` ← al compartir, el tutor elige qué mascota autoriza
+27. `27_servicio_vacunacion.sql` ← servicio Vacunación (historial + recordatorio)
+28. `28_clinica_horario_vet_servicios.sql` ← apertura del local + servicios por veterinario
+29. `29_servicios_generales.sql` ← catálogo de servicios; la clínica elige cuáles ofrece
+30. `30_servicios_dedupe.sql` ← une/limpia servicios duplicados por clínica + código
+31. `31_mascota_digital_vincular_chapita.sql` ← mascota sin QR + vincular chapita física
+32. `32_mascota_temperamento.sql` ← temperamento (+ castrado en pacientes de clínica)
 
 No corras `01` a ciegas si las tablas `mascotas` / `chapitas` / `admin_users` ya existen.
-En proyectos ya en uso, ejecutá al menos el `07`, el `09`, el `10`–`26` para el formulario
+En proyectos ya en uso, ejecutá al menos el `07`, el `09`, el `10`–`32` para el formulario
 ampliado, clínicas, portal de tutores, notificaciones, horarios por vet, cambios de perfil,
 fecha de modificación de HC, vacunas del tutor, compartir perfil/mascota, eliminar tirada
 y nuevas cantidades por tirada.

@@ -19,7 +19,7 @@ const steps = [
   {
     icon: Smartphone,
     title: "Perfil listo",
-    body: "Quien escanee ve la ficha, el contacto del tutor y, si hay, las otras mascotas de la familia.",
+    body: "Quien escanee ve la ficha de esa mascota y el contacto del tutor, sin listar otras mascotas.",
   },
 ];
 

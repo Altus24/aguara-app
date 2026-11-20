@@ -6,14 +6,22 @@ import { useEffect, useState } from "react";
 
 import { useTutorAuth } from "@/context/TutorAuthContext";
 import { etiquetaEstado } from "@/lib/chapitas/clinicaOps";
+import { isDigitalMascotaId } from "@/lib/chapitas/chapitaId";
 import {
   actualizarDatosBasicosMascota,
   cargarPerfilClinicoMascota,
 } from "@/lib/chapitas/mascotaPerfil";
 import {
+  chapitaDisponibleParaActivar,
+  vincularChapitaAMascotaDigital,
+} from "@/lib/chapitas/mascotasTutor";
+import {
   crearVacunaTutor,
   eliminarVacunaTutor,
 } from "@/lib/chapitas/tutorPortal";
+import { esVacunaVencida } from "@/lib/chapitas/vacunas";
+import { confirmGuardar } from "@/lib/confirmAction";
+import { TEMPERAMENTOS_MASCOTA } from "@/components/mascotas/MascotaRegistroFields";
 import {
   Field,
   cardClass,
@@ -58,7 +66,13 @@ export default function TutorMascotaPerfil() {
   const [editing, setEditing] = useState(false);
   const [fechaNacimiento, setFechaNacimiento] = useState("");
   const [peso, setPeso] = useState("");
+  const [castrado, setCastrado] = useState("");
+  const [temperamento, setTemperamento] = useState("");
   const [saving, setSaving] = useState(false);
+  const [codigoChapita, setCodigoChapita] = useState("");
+  const [linking, setLinking] = useState(false);
+  const [linkMsg, setLinkMsg] = useState("");
+  const sinChapita = isDigitalMascotaId(chapitaId);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -84,6 +98,8 @@ export default function TutorMascotaPerfil() {
       setPerfil(data);
       setFechaNacimiento(data.fecha_nacimiento || "");
       setPeso(data.peso != null ? String(data.peso) : "");
+      setCastrado(data.castrado === true ? "si" : data.castrado === false ? "no" : "");
+      setTemperamento(data.temperamento || "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar el perfil.");
       setPerfil(null);
@@ -106,6 +122,8 @@ export default function TutorMascotaPerfil() {
       await actualizarDatosBasicosMascota(chapitaId, {
         fecha_nacimiento: fechaNacimiento,
         peso,
+        castrado,
+        temperamento,
       });
       setEditing(false);
       await reload();
@@ -113,6 +131,31 @@ export default function TutorMascotaPerfil() {
       setError(err instanceof Error ? err.message : "No se pudieron guardar los datos.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleVincularChapita(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!(await confirmGuardar("el vínculo de la chapita a esta mascota"))) return;
+    setLinking(true);
+    setError("");
+    setLinkMsg("");
+    try {
+      const check = await chapitaDisponibleParaActivar(codigoChapita);
+      if (!check.ok) throw new Error(check.message);
+      const result = await vincularChapitaAMascotaDigital({
+        tutorId: tutor.id,
+        mascotaDigitalId: chapitaId,
+        chapitaCodigo: check.id,
+      });
+      const nuevoId = result.chapita_id || check.id;
+      setLinkMsg(`Chapita ${nuevoId} vinculada.`);
+      router.replace(`/tutor/mascota/${encodeURIComponent(nuevoId)}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo vincular la chapita.");
+    } finally {
+      setLinking(false);
     }
   }
 
@@ -185,7 +228,16 @@ export default function TutorMascotaPerfil() {
                 Castrado/a: {perfil.castrado ? "Sí" : "No"}
               </p>
             ) : null}
-            <p className="mt-1 text-xs text-stone-400">Chapita {perfil.chapitaId}</p>
+            {perfil.temperamento ? (
+              <p className="mt-1 text-sm text-stone-500">Temperamento: {perfil.temperamento}</p>
+            ) : null}
+            {sinChapita ? (
+              <p className="mt-2 inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900">
+                Sin chapita todavía
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-stone-400">Chapita {perfil.chapitaId}</p>
+            )}
           </div>
         </div>
       </div>
@@ -195,11 +247,36 @@ export default function TutorMascotaPerfil() {
           {error}
         </p>
       ) : null}
+      {linkMsg ? <p className="mb-4 text-sm text-emerald-700">{linkMsg}</p> : null}
 
       <div className="space-y-5">
+        {sinChapita ? (
+          <section className={cardClass}>
+            <h2 className="text-lg font-semibold text-aguara-ink">Vincular chapita</h2>
+            <p className="mt-1 text-sm text-stone-500">
+              Ingresá el código impreso en la chapita (o el del QR) para asociarla a esta mascota.
+            </p>
+            <form onSubmit={handleVincularChapita} className="mt-4 space-y-3">
+              <Field label="Código de la chapita" id="perfil-codigo-chapita">
+                <input
+                  id="perfil-codigo-chapita"
+                  required
+                  placeholder="Ej: T2-015"
+                  className={fieldClass}
+                  value={codigoChapita}
+                  onChange={(e) => setCodigoChapita(e.target.value)}
+                />
+              </Field>
+              <button type="submit" disabled={linking} className={primaryBtnClass}>
+                {linking ? "Vinculando…" : "Guardar código / vincular"}
+              </button>
+            </form>
+          </section>
+        ) : null}
+
         <section className={cardClass}>
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-aguara-ink">Edad / peso</h2>
+            <h2 className="text-lg font-semibold text-aguara-ink">Datos básicos</h2>
             <button
               type="button"
               className="text-sm text-aguara-orange underline"
@@ -230,12 +307,41 @@ export default function TutorMascotaPerfil() {
                   className={fieldClass}
                 />
               </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-stone-700">Castrado/a</span>
+                <select
+                  required
+                  value={castrado}
+                  onChange={(e) => setCastrado(e.target.value)}
+                  className={fieldClass}
+                >
+                  <option value="">Elegí una opción</option>
+                  <option value="si">Sí</option>
+                  <option value="no">No</option>
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-stone-700">Temperamento</span>
+                <select
+                  required
+                  value={temperamento}
+                  onChange={(e) => setTemperamento(e.target.value)}
+                  className={fieldClass}
+                >
+                  <option value="">Elegí una opción</option>
+                  {TEMPERAMENTOS_MASCOTA.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button type="submit" disabled={saving} className={`${primaryBtnClass} sm:col-span-2`}>
                 {saving ? "Guardando…" : "Guardar"}
               </button>
             </form>
           ) : (
-            <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+            <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
               <div>
                 <dt className="text-stone-500">Fecha de nacimiento</dt>
                 <dd className="font-medium text-aguara-ink">{formatDate(perfil.fecha_nacimiento)}</dd>
@@ -249,6 +355,16 @@ export default function TutorMascotaPerfil() {
                 <dd className="font-medium text-aguara-ink">
                   {perfil.peso != null ? `${perfil.peso} kg` : "—"}
                 </dd>
+              </div>
+              <div>
+                <dt className="text-stone-500">Castrado/a</dt>
+                <dd className="font-medium text-aguara-ink">
+                  {perfil.castrado == null ? "—" : perfil.castrado ? "Sí" : "No"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-stone-500">Temperamento</dt>
+                <dd className="font-medium text-aguara-ink">{perfil.temperamento || "—"}</dd>
               </div>
             </dl>
           )}
@@ -423,6 +539,11 @@ function VacunasPerfilSection({ tutor, perfil, chapitaId, onChanged }) {
             >
               <div>
                 <strong>{v.nombre}</strong> · {formatDate(v.fecha)}
+                {esVacunaVencida(v) ? (
+                  <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-800">
+                    Vencida
+                  </span>
+                ) : null}
                 {v.origen === "tutor" ? (
                   <span className="ml-1 text-xs text-aguara-orange">(vos)</span>
                 ) : (

@@ -27,9 +27,27 @@ const NAV = [
 export default function TutorPanel() {
   const { tutor, isAuthenticated, authLoading, signOut } = useTutorAuth();
   const router = useRouter();
-  const [tab, setTab] = useState("mascotas");
+  const [tab, setTab] = useState(() => {
+    if (typeof window === "undefined") return "mascotas";
+    try {
+      const stored = window.sessionStorage.getItem("aguara_tutor_panel_tab");
+      const allowed = new Set(["mascotas", "agenda", "historial", "recordatorios", "perfil"]);
+      return allowed.has(stored) ? stored : "mascotas";
+    } catch {
+      return "mascotas";
+    }
+  });
   const [pendientesPerfil, setPendientesPerfil] = useState(0);
   const [notifMensaje, setNotifMensaje] = useState("");
+
+  function selectTab(next) {
+    setTab(next);
+    try {
+      window.sessionStorage.setItem("aguara_tutor_panel_tab", next);
+    } catch {
+      /* ignore */
+    }
+  }
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -111,7 +129,7 @@ export default function TutorPanel() {
             <button
               type="button"
               className="rounded-full bg-aguara-orange px-4 py-2 text-sm font-medium text-white"
-              onClick={() => setTab("perfil")}
+              onClick={() => selectTab("perfil")}
             >
               Revisar en perfil
             </button>
@@ -124,7 +142,7 @@ export default function TutorPanel() {
           <button
             key={item.id}
             type="button"
-            onClick={() => setTab(item.id)}
+            onClick={() => selectTab(item.id)}
             className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition ${
               tab === item.id
                 ? "bg-aguara-orange text-white"

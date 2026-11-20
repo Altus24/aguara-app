@@ -18,9 +18,11 @@ import {
   eliminarVeterinario,
   listarVeterinarios,
 } from "@/lib/chapitas/clinicaOps";
+import { confirmGuardar } from "@/lib/confirmAction";
 import {
   DIAS_SEMANA,
   actualizarClinica,
+  actualizarServicio,
   actualizarStockProducto,
   crearHorario,
   crearProducto,
@@ -28,21 +30,48 @@ import {
   eliminarHorario,
   eliminarProducto,
   eliminarServicio,
+  esServicioGeneral,
+  esServicioVacunacion,
+  guardarServiciosDeVeterinario,
   listarHorarios,
+  listarIdsServiciosDeVeterinario,
   listarProductos,
   listarServicios,
+  listarServiciosGenerales,
 } from "@/lib/chapitas/clinicas";
 
 const SUBTABS = [
   { id: "ubicacion", label: "Ubicación" },
+  { id: "horarios", label: "Horario local" },
   { id: "vets", label: "Veterinarios" },
   { id: "servicios", label: "Servicios" },
-  { id: "horarios", label: "Horarios" },
   { id: "stock", label: "Stock" },
 ];
 
+const CONFIG_TAB_KEY = "aguara_clinica_config_tab";
+const CONFIG_TAB_IDS = new Set(SUBTABS.map((item) => item.id));
+
+function readConfigTab() {
+  if (typeof window === "undefined") return "ubicacion";
+  try {
+    const stored = window.sessionStorage.getItem(CONFIG_TAB_KEY);
+    return CONFIG_TAB_IDS.has(stored) ? stored : "ubicacion";
+  } catch {
+    return "ubicacion";
+  }
+}
+
 export default function ConfigSection({ clinica, onSaved }) {
-  const [tab, setTab] = useState("ubicacion");
+  const [tab, setTab] = useState(readConfigTab);
+
+  function selectTab(next) {
+    setTab(next);
+    try {
+      window.sessionStorage.setItem(CONFIG_TAB_KEY, next);
+    } catch {
+      /* ignore */
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -55,7 +84,7 @@ export default function ConfigSection({ clinica, onSaved }) {
           <button
             key={item.id}
             type="button"
-            onClick={() => setTab(item.id)}
+            onClick={() => selectTab(item.id)}
             className={`rounded-full px-3 py-1.5 text-sm font-medium ${
               tab === item.id
                 ? "bg-aguara-orange text-white"
@@ -92,6 +121,8 @@ function Ubicacion({ clinica, onSaved }) {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    event.stopPropagation();
+    if (!(await confirmGuardar("la ubicación de la clínica"))) return;
     setSaving(true);
     setError("");
     setMessage("");
@@ -106,7 +137,7 @@ function Ubicacion({ clinica, onSaved }) {
         maps_url: form.maps_url.trim() || null,
         permite_citas_tutor: Boolean(form.permite_citas_tutor),
       });
-      onSaved(updated);
+      onSaved?.(updated);
       setMessage("Ubicación guardada.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar.");
@@ -216,6 +247,7 @@ function Veterinarios({ clinicaId }) {
   const [firmaKey, setFirmaKey] = useState(0);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
 
   async function reload() {
     setItems(await listarVeterinarios(clinicaId));
@@ -232,6 +264,7 @@ function Veterinarios({ clinicaId }) {
     setFirmaKey((k) => k + 1);
     setShowForm(true);
     setError("");
+    setMessage("");
   }
 
   function openEdit(vet) {
@@ -246,12 +279,18 @@ function Veterinarios({ clinicaId }) {
     setFirmaKey((k) => k + 1);
     setShowForm(true);
     setError("");
+    setMessage("");
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
+    event.stopPropagation();
+    if (!(await confirmGuardar(editingId ? "el perfil del veterinario" : "el nuevo veterinario"))) {
+      return;
+    }
     setSaving(true);
     setError("");
+    setMessage("");
     try {
       if (!form.matricula.trim()) {
         throw new Error("La matrícula es obligatoria.");
@@ -259,15 +298,24 @@ function Veterinarios({ clinicaId }) {
       if (!form.firma_digital) {
         throw new Error("Agregá la firma digital del veterinario.");
       }
+      let vetId = editingId;
       if (editingId) {
         await actualizarVeterinario(editingId, form);
+        setMessage("Perfil actualizado. Ahora podés cargar horarios y servicios abajo.");
       } else {
-        await crearVeterinario(clinicaId, form);
+        const created = await crearVeterinario(clinicaId, form);
+        vetId = created.id;
+        setEditingId(created.id);
+        setMessage(
+          "Veterinario creado. Completá su agenda y los servicios que ofrece en las secciones de abajo.",
+        );
       }
-      setShowForm(false);
-      setEditingId(null);
-      setForm(emptyVetForm);
       await reload();
+      if (!vetId) {
+        setShowForm(false);
+        setEditingId(null);
+        setForm(emptyVetForm);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar el veterinario.");
     } finally {
@@ -279,9 +327,10 @@ function Veterinarios({ clinicaId }) {
     <div className="space-y-4">
       <div className={`${cardClass} flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between`}>
         <div>
-          <h3 className="font-semibold text-aguara-ink">Registro de veterinarios</h3>
+          <h3 className="font-semibold text-aguara-ink">Perfiles de veterinarios</h3>
           <p className="text-sm text-stone-500">
-            Nombre, matrícula profesional y firma digital para cerrar consultas
+            Cada vet define su agenda y los servicios que ofrece, dentro del horario de apertura del
+            local.
           </p>
         </div>
         <button type="button" className={primaryBtnClass} onClick={openCreate}>
@@ -292,7 +341,7 @@ function Veterinarios({ clinicaId }) {
       {showForm ? (
         <form onSubmit={handleSubmit} className={`${cardClass} space-y-4`}>
           <h4 className="font-semibold text-aguara-ink">
-            {editingId ? "Editar veterinario" : "Registrar veterinario"}
+            {editingId ? "Perfil del veterinario" : "Registrar veterinario"}
           </h4>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Nombre completo" id="vet-nombre">
@@ -340,9 +389,10 @@ function Veterinarios({ clinicaId }) {
             />
           </Field>
           {error ? <p className="text-sm text-red-700">{error}</p> : null}
+          {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
           <div className="flex flex-wrap gap-2">
             <button type="submit" disabled={saving} className={primaryBtnClass}>
-              {saving ? "Guardando…" : editingId ? "Guardar cambios" : "Registrar"}
+              {saving ? "Guardando…" : editingId ? "Guardar perfil" : "Registrar"}
             </button>
             <button
               type="button"
@@ -350,12 +400,26 @@ function Veterinarios({ clinicaId }) {
               onClick={() => {
                 setShowForm(false);
                 setEditingId(null);
+                setMessage("");
               }}
             >
-              Cancelar
+              Cerrar
             </button>
           </div>
+          {!editingId ? (
+            <p className="text-xs text-stone-500">
+              Después de registrar al veterinario vas a poder cargar su horario y servicios.
+            </p>
+          ) : null}
         </form>
+      ) : null}
+
+      {showForm && editingId ? (
+        <div className={`${cardClass} space-y-4`}>
+          <h4 className="font-semibold text-aguara-ink">Agenda y servicios</h4>
+          <VetHorariosPanel clinicaId={clinicaId} veterinarioId={editingId} />
+          <VetServiciosPanel clinicaId={clinicaId} veterinarioId={editingId} />
+        </div>
       ) : null}
 
       <div className={cardClass}>
@@ -395,7 +459,7 @@ function Veterinarios({ clinicaId }) {
                     className="text-aguara-orange underline"
                     onClick={() => openEdit(v)}
                   >
-                    Editar
+                    Perfil / horarios
                   </button>
                   <button
                     type="button"
@@ -418,137 +482,37 @@ function Veterinarios({ clinicaId }) {
   );
 }
 
-function Servicios({ clinicaId }) {
+function VetHorariosPanel({ clinicaId, veterinarioId }) {
   const [items, setItems] = useState([]);
-  const [nombre, setNombre] = useState("");
-  const [precio, setPrecio] = useState("");
-  const [descripcion, setDescripcion] = useState("");
-  const [error, setError] = useState("");
-
-  async function reload() {
-    setItems(await listarServicios(clinicaId));
-  }
-
-  useEffect(() => {
-    reload().catch((err) => setError(err.message));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clinicaId]);
-
-  return (
-    <div className={`${cardClass} space-y-4`}>
-      <h3 className="font-semibold text-aguara-ink">Servicios</h3>
-      <form
-        className="grid gap-3 sm:grid-cols-4"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          try {
-            await crearServicio(clinicaId, { nombre, precio, descripcion });
-            setNombre("");
-            setPrecio("");
-            setDescripcion("");
-            await reload();
-          } catch (err) {
-            setError(err.message);
-          }
-        }}
-      >
-        <input
-          required
-          placeholder="Nombre"
-          className={`${fieldClass} sm:col-span-2`}
-          value={nombre}
-          onChange={(e) => setNombre(e.target.value)}
-        />
-        <input
-          type="number"
-          placeholder="Precio"
-          className={fieldClass}
-          value={precio}
-          onChange={(e) => setPrecio(e.target.value)}
-        />
-        <button type="submit" className={primaryBtnClass}>
-          Agregar
-        </button>
-        <input
-          placeholder="Descripción"
-          className={`${fieldClass} sm:col-span-4`}
-          value={descripcion}
-          onChange={(e) => setDescripcion(e.target.value)}
-        />
-      </form>
-      {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <ul className="divide-y divide-stone-100">
-        {items.map((item) => (
-          <li key={item.id} className="flex justify-between gap-3 py-2 text-sm">
-            <span>
-              <strong>{item.nombre}</strong>
-              {item.precio != null ? ` · $${item.precio}` : ""}
-            </span>
-            <button
-              type="button"
-              className="text-stone-500 underline"
-              onClick={async () => {
-                await eliminarServicio(item.id);
-                await reload();
-              }}
-            >
-              Quitar
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function Horarios({ clinicaId }) {
-  const [items, setItems] = useState([]);
-  const [vets, setVets] = useState([]);
-  const [veterinarioId, setVeterinarioId] = useState("");
-  const [filtroVet, setFiltroVet] = useState("");
   const [diaSemana, setDiaSemana] = useState("1");
   const [horaInicio, setHoraInicio] = useState("09:00");
   const [horaFin, setHoraFin] = useState("18:00");
   const [error, setError] = useState("");
 
   async function reload() {
-    const [horarios, veterinarios] = await Promise.all([
-      listarHorarios(clinicaId),
-      listarVeterinarios(clinicaId),
-    ]);
-    setItems(horarios);
-    setVets(veterinarios.filter((v) => v.activo !== false));
-    if (!veterinarioId && veterinarios[0]?.id) {
-      setVeterinarioId(veterinarios[0].id);
-    }
+    const all = await listarHorarios(clinicaId, { veterinarioId });
+    setItems(all.filter((h) => h.veterinario_id === veterinarioId));
   }
 
   useEffect(() => {
     reload().catch((err) => setError(err.message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clinicaId]);
-
-  const visibles = filtroVet
-    ? items.filter((h) => h.veterinario_id === filtroVet)
-    : items;
+  }, [clinicaId, veterinarioId]);
 
   return (
-    <div className={`${cardClass} space-y-4`}>
+    <div className="space-y-3 rounded-xl border border-stone-200 bg-stone-50/70 p-3">
       <div>
-        <h3 className="font-semibold text-aguara-ink">Horarios por veterinario</h3>
-        <p className="text-sm text-stone-500">
-          Cada veterinario define sus propios días y franjas de atención.
+        <h5 className="text-sm font-semibold text-aguara-ink">Su agenda semanal</h5>
+        <p className="text-xs text-stone-500">
+          Solo puede atender dentro del horario de apertura del local.
         </p>
       </div>
-      {vets.length === 0 ? (
-        <p className="text-sm text-amber-800">
-          Primero registrá veterinarios en la pestaña Veterinarios.
-        </p>
-      ) : null}
       <form
-        className="grid gap-3 sm:grid-cols-5"
+        className="grid gap-2 sm:grid-cols-4"
         onSubmit={async (e) => {
           e.preventDefault();
+          e.stopPropagation();
+          if (!(await confirmGuardar("el horario del veterinario"))) return;
           setError("");
           try {
             await crearHorario(clinicaId, {
@@ -563,19 +527,6 @@ function Horarios({ clinicaId }) {
           }
         }}
       >
-        <select
-          className={fieldClass}
-          required
-          value={veterinarioId}
-          onChange={(e) => setVeterinarioId(e.target.value)}
-        >
-          <option value="">Veterinario…</option>
-          {vets.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.nombre}
-            </option>
-          ))}
-        </select>
         <select
           className={fieldClass}
           value={diaSemana}
@@ -599,44 +550,463 @@ function Horarios({ clinicaId }) {
           value={horaFin}
           onChange={(e) => setHoraFin(e.target.value)}
         />
-        <button type="submit" className={primaryBtnClass} disabled={!veterinarioId}>
+        <button type="submit" className={primaryBtnClass}>
           Agregar
         </button>
       </form>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          className={`rounded-full px-3 py-1 text-xs font-medium ${
-            !filtroVet ? "bg-aguara-orange text-white" : "bg-stone-100 text-stone-700"
-          }`}
-          onClick={() => setFiltroVet("")}
-        >
-          Todos
-        </button>
-        {vets.map((v) => (
-          <button
-            key={v.id}
-            type="button"
-            className={`rounded-full px-3 py-1 text-xs font-medium ${
-              filtroVet === v.id ? "bg-aguara-orange text-white" : "bg-stone-100 text-stone-700"
-            }`}
-            onClick={() => setFiltroVet(v.id)}
-          >
-            {v.nombre}
-          </button>
-        ))}
-      </div>
-      <ul className="space-y-2 text-sm">
-        {visibles.length === 0 ? (
-          <li className="text-stone-500">Sin horarios cargados.</li>
+      <ul className="space-y-1 text-sm">
+        {items.length === 0 ? (
+          <li className="text-stone-500">Sin franjas cargadas.</li>
         ) : (
-          visibles.map((slot) => (
+          items.map((slot) => (
             <li key={slot.id} className="flex justify-between gap-3">
               <span>
-                <span className="font-medium text-aguara-ink">
-                  {slot.clinica_veterinarios?.nombre || "General (legado)"}
-                </span>
+                {DIAS_SEMANA[slot.dia_semana]} · {formatTime(slot.hora_inicio)}–
+                {formatTime(slot.hora_fin)}
+              </span>
+              <button
+                type="button"
+                className="text-stone-500 underline"
+                onClick={async () => {
+                  await eliminarHorario(slot.id);
+                  await reload();
+                }}
+              >
+                Quitar
+              </button>
+            </li>
+          ))
+        )}
+      </ul>
+    </div>
+  );
+}
+
+function VetServiciosPanel({ clinicaId, veterinarioId }) {
+  const [servicios, setServicios] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  async function reload() {
+    const [all, ids] = await Promise.all([
+      listarServicios(clinicaId),
+      listarIdsServiciosDeVeterinario(veterinarioId),
+    ]);
+    setServicios(all.filter((s) => s.activo !== false));
+    setSelected(ids);
+  }
+
+  useEffect(() => {
+    reload().catch((err) => setError(err.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clinicaId, veterinarioId]);
+
+  function toggle(id) {
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  return (
+    <div className="space-y-3 rounded-xl border border-stone-200 bg-stone-50/70 p-3">
+      <div>
+        <h5 className="text-sm font-semibold text-aguara-ink">Servicios que ofrece</h5>
+        <p className="text-xs text-stone-500">
+          Al crear una cita, solo se listarán estos servicios para este veterinario.
+        </p>
+      </div>
+      {servicios.length === 0 ? (
+        <p className="text-sm text-stone-500">
+          Todavía no hay servicios de la clínica. Creá algunos en la pestaña Servicios.
+        </p>
+      ) : (
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {servicios.map((s) => (
+            <li key={s.id}>
+              <label className="flex items-center gap-2 text-sm text-stone-800">
+                <input
+                  type="checkbox"
+                  checked={selected.includes(s.id)}
+                  onChange={() => toggle(s.id)}
+                />
+                {s.nombre}
+                {esServicioVacunacion(s) ? (
+                  <span className="text-[11px] text-emerald-700">vacunación</span>
+                ) : null}
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+      {error ? <p className="text-sm text-red-700">{error}</p> : null}
+      {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
+      <button
+        type="button"
+        className={primaryBtnClass}
+        disabled={saving || servicios.length === 0}
+        onClick={async () => {
+          setSaving(true);
+          setError("");
+          setMessage("");
+          try {
+            if (!(await confirmGuardar("los servicios del veterinario"))) return;
+            await guardarServiciosDeVeterinario(veterinarioId, selected);
+            setMessage("Servicios actualizados.");
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "No se pudieron guardar.");
+          } finally {
+            setSaving(false);
+          }
+        }}
+      >
+        {saving ? "Guardando…" : "Guardar servicios"}
+      </button>
+    </div>
+  );
+}
+
+function Servicios({ clinicaId }) {
+  const [items, setItems] = useState([]);
+  const [catalogoCodigos, setCatalogoCodigos] = useState(() => new Set());
+  const [nombre, setNombre] = useState("");
+  const [precio, setPrecio] = useState("");
+  const [descripcion, setDescripcion] = useState("");
+  const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState("");
+
+  async function reload() {
+    const [rows, catalogo] = await Promise.all([
+      listarServicios(clinicaId),
+      listarServiciosGenerales(),
+    ]);
+    setCatalogoCodigos(new Set(catalogo.map((g) => String(g.codigo).toLowerCase())));
+    setItems(rows);
+  }
+
+  useEffect(() => {
+    reload().catch((err) => setError(err.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clinicaId]);
+
+  const generales = [];
+  const vistos = new Set();
+  for (const item of items) {
+    if (!esServicioGeneral(item, catalogoCodigos)) continue;
+    const codigo = String(item.codigo || "").toLowerCase();
+    if (vistos.has(codigo)) continue;
+    vistos.add(codigo);
+    generales.push(item);
+  }
+  const propios = items.filter((item) => !esServicioGeneral(item, catalogoCodigos));
+
+  async function toggleOfrece(item) {
+    setBusyId(item.id);
+    setError("");
+    try {
+      const next = item.activo === false;
+      await actualizarServicio(item.id, { activo: next });
+      setItems((prev) => prev.map((s) => (s.id === item.id ? { ...s, activo: next } : s)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo actualizar.");
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  async function guardarPrecio(item, value) {
+    setBusyId(item.id);
+    setError("");
+    try {
+      if (!(await confirmGuardar(`el precio de “${item.nombre}”`))) return;
+      const updated = await actualizarServicio(item.id, { precio: value });
+      setItems((prev) => prev.map((s) => (s.id === item.id ? { ...s, ...updated } : s)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar el precio.");
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      {error ? <p className="text-sm text-red-700">{error}</p> : null}
+
+      <div className={`${cardClass} space-y-4`}>
+        <div>
+          <h3 className="font-semibold text-aguara-ink">Servicios propios</h3>
+          <p className="text-sm text-stone-500">
+            Extras de esta clínica (no están en el catálogo general).
+          </p>
+        </div>
+        <form
+          className="grid gap-3 sm:grid-cols-4"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!(await confirmGuardar(`el servicio propio “${nombre.trim()}”`))) return;
+            try {
+              await crearServicio(clinicaId, { nombre, precio, descripcion });
+              setNombre("");
+              setPrecio("");
+              setDescripcion("");
+              await reload();
+            } catch (err) {
+              setError(err.message);
+            }
+          }}
+        >
+          <input
+            required
+            placeholder="Nombre"
+            className={`${fieldClass} sm:col-span-2`}
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+          />
+          <input
+            type="number"
+            placeholder="Precio"
+            className={fieldClass}
+            value={precio}
+            onChange={(e) => setPrecio(e.target.value)}
+          />
+          <button type="submit" className={primaryBtnClass}>
+            Agregar propio
+          </button>
+          <input
+            placeholder="Descripción"
+            className={`${fieldClass} sm:col-span-4`}
+            value={descripcion}
+            onChange={(e) => setDescripcion(e.target.value)}
+          />
+        </form>
+        <ul className="divide-y divide-stone-100">
+          {propios.length === 0 ? (
+            <li className="py-2 text-sm text-stone-500">Sin servicios propios todavía.</li>
+          ) : (
+            propios.map((item) => (
+              <li
+                key={item.id}
+                className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium text-aguara-ink">
+                    {item.nombre}
+                    <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-900">
+                      servicio propio
+                    </span>
+                    {item.activo === false ? (
+                      <span className="ml-2 text-xs text-stone-400">(inactivo)</span>
+                    ) : null}
+                  </p>
+                  {item.descripcion ? (
+                    <p className="text-xs text-stone-500">{item.descripcion}</p>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-2 text-sm text-stone-700">
+                    <span className="text-stone-500">$</span>
+                    <input
+                      type="number"
+                      className="w-24 rounded-md border border-stone-300 px-2 py-1"
+                      defaultValue={item.precio ?? ""}
+                      disabled={busyId === item.id}
+                      onBlur={(e) => {
+                        const next = e.target.value;
+                        const prev =
+                          item.precio == null || item.precio === "" ? "" : String(item.precio);
+                        if (next === prev) return;
+                        guardarPrecio(item, next);
+                      }}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="text-aguara-orange underline text-sm"
+                    onClick={() => toggleOfrece(item)}
+                  >
+                    {item.activo === false ? "Activar" : "Desactivar"}
+                  </button>
+                  <button
+                    type="button"
+                    className="text-stone-500 underline text-sm"
+                    onClick={async () => {
+                      if (!(await confirmEliminar(`el servicio propio “${item.nombre}”`))) return;
+                      await eliminarServicio(item.id);
+                      await reload();
+                    }}
+                  >
+                    Quitar
+                  </button>
+                </div>
+              </li>
+            ))
+          )}
+        </ul>
+      </div>
+
+      <div className={`${cardClass} space-y-4`}>
+        <div>
+          <h3 className="font-semibold text-aguara-ink">Servicios generales</h3>
+          <p className="text-sm text-stone-500">
+            Catálogo común a todas las clínicas. Activá solo los que ofrezcan en este local. La
+            vacunación, si está activa, registra historial y recordatorio.
+          </p>
+        </div>
+        <ul className="divide-y divide-stone-100">
+          {generales.length === 0 ? (
+            <li className="py-2 text-sm text-stone-500">
+              Todavía no hay catálogo. Ejecutá{" "}
+              <code className="text-xs">29_servicios_generales.sql</code> en Supabase.
+            </li>
+          ) : (
+            generales.map((item) => {
+              const ofrece = item.activo !== false;
+              return (
+                <li
+                  key={item.id}
+                  className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-aguara-ink">
+                      {item.nombre}
+                      <span className="ml-2 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
+                        general
+                      </span>
+                      {esServicioVacunacion(item) ? (
+                        <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
+                          historial + recordatorio
+                        </span>
+                      ) : null}
+                    </p>
+                    {item.descripcion ? (
+                      <p className="text-xs text-stone-500">{item.descripcion}</p>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="flex items-center gap-2 text-sm text-stone-700">
+                      <span className="text-stone-500">$</span>
+                      <input
+                        type="number"
+                        className="w-24 rounded-md border border-stone-300 px-2 py-1"
+                        defaultValue={item.precio ?? ""}
+                        disabled={busyId === item.id}
+                        onBlur={(e) => {
+                          const next = e.target.value;
+                          const prev =
+                            item.precio == null || item.precio === ""
+                              ? ""
+                              : String(item.precio);
+                          if (next === prev) return;
+                          guardarPrecio(item, next);
+                        }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      disabled={busyId === item.id}
+                      onClick={() => toggleOfrece(item)}
+                      className={`rounded-full px-3 py-1.5 text-sm font-medium ${
+                        ofrece
+                          ? "bg-emerald-100 text-emerald-900"
+                          : "bg-stone-100 text-stone-600"
+                      }`}
+                    >
+                      {ofrece ? "Lo ofrecemos" : "No lo ofrecemos"}
+                    </button>
+                  </div>
+                </li>
+              );
+            })
+          )}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function Horarios({ clinicaId }) {
+  const [items, setItems] = useState([]);
+  const [diaSemana, setDiaSemana] = useState("1");
+  const [horaInicio, setHoraInicio] = useState("09:00");
+  const [horaFin, setHoraFin] = useState("18:00");
+  const [error, setError] = useState("");
+
+  async function reload() {
+    const horarios = await listarHorarios(clinicaId);
+    setItems(horarios.filter((h) => !h.veterinario_id));
+  }
+
+  useEffect(() => {
+    reload().catch((err) => setError(err.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clinicaId]);
+
+  return (
+    <div className={`${cardClass} space-y-4`}>
+      <div>
+        <h3 className="font-semibold text-aguara-ink">Horario de apertura del local</h3>
+        <p className="text-sm text-stone-500">
+          Define cuándo está abierta la clínica. Los veterinarios cargan su propia agenda en su
+          perfil, siempre dentro de este horario.
+        </p>
+      </div>
+      <form
+        className="grid gap-3 sm:grid-cols-4"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!(await confirmGuardar("el horario de apertura del local"))) return;
+          setError("");
+          try {
+            await crearHorario(clinicaId, {
+              diaSemana,
+              horaInicio,
+              horaFin,
+              veterinarioId: null,
+            });
+            await reload();
+          } catch (err) {
+            setError(err.message);
+          }
+        }}
+      >
+        <select
+          className={fieldClass}
+          value={diaSemana}
+          onChange={(e) => setDiaSemana(e.target.value)}
+        >
+          {DIAS_SEMANA.map((n, i) => (
+            <option key={n} value={i}>
+              {n}
+            </option>
+          ))}
+        </select>
+        <input
+          type="time"
+          className={fieldClass}
+          value={horaInicio}
+          onChange={(e) => setHoraInicio(e.target.value)}
+        />
+        <input
+          type="time"
+          className={fieldClass}
+          value={horaFin}
+          onChange={(e) => setHoraFin(e.target.value)}
+        />
+        <button type="submit" className={primaryBtnClass}>
+          Agregar
+        </button>
+      </form>
+      {error ? <p className="text-sm text-red-700">{error}</p> : null}
+      <ul className="space-y-2 text-sm">
+        {items.length === 0 ? (
+          <li className="text-stone-500">Todavía no cargaste la apertura del local.</li>
+        ) : (
+          items.map((slot) => (
+            <li key={slot.id} className="flex justify-between gap-3">
+              <span>
+                <span className="font-medium text-aguara-ink">Apertura</span>
                 {" · "}
                 {DIAS_SEMANA[slot.dia_semana]} · {formatTime(slot.hora_inicio)}–
                 {formatTime(slot.hora_fin)}
@@ -683,6 +1053,8 @@ function Stock({ clinicaId }) {
         className="grid gap-3 sm:grid-cols-5"
         onSubmit={async (e) => {
           e.preventDefault();
+          e.stopPropagation();
+          if (!(await confirmGuardar(`el producto “${nombre.trim()}”`))) return;
           try {
             await crearProducto(clinicaId, { nombre, stock, unidad, precio });
             setNombre("");

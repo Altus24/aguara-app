@@ -9,6 +9,7 @@ import {
   downloadTextFile,
   historialClinicoTutor,
 } from "@/lib/chapitas/tutorPortal";
+import { esVacunaVencida } from "@/lib/chapitas/vacunas";
 
 export default function HistorialSection({ tutor }) {
   const [data, setData] = useState({
@@ -131,6 +132,11 @@ export default function HistorialSection({ tutor }) {
                 <li key={`${v.origen || "clinica"}-${v.id}`}>
                   <strong>{v.clinica_pacientes?.nombre || "Mascota"}</strong> · {v.nombre} ·{" "}
                   {formatDate(v.fecha)}
+                  {esVacunaVencida(v) ? (
+                    <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-800">
+                      Vencida
+                    </span>
+                  ) : null}
                   {v.proxima_fecha ? ` · próxima ${formatDate(v.proxima_fecha)}` : ""}
                   {v.origen === "tutor" ? " · cargada por vos" : ""}
                 </li>

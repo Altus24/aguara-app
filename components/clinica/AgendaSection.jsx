@@ -2,11 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import CitaForm from "@/components/clinica/CitaForm";
 import {
   cardClass,
   EstadoBadge,
-  Field,
-  fieldClass,
   formatDateTime,
   primaryBtnClass,
   secondaryBtnClass,
@@ -14,9 +13,7 @@ import {
 import {
   CITA_ESTADOS,
   addDaysISO,
-  actualizarCita,
   cambiarEstadoCita,
-  crearCita,
   endOfDayISO,
   etiquetaEstado,
   listarCitasPendientes,
@@ -27,8 +24,7 @@ import {
   listarVeterinarios,
   startOfDayISO,
 } from "@/lib/chapitas/clinicaOps";
-import { listarHorarios, listarServicios } from "@/lib/chapitas/clinicas";
-import { confirmGuardar } from "@/lib/confirmAction";
+import { listarHorarios, listarServiciosActivos } from "@/lib/chapitas/clinicas";
 import {
   generarSlotsDeHorario,
   generarSlotsDisponibles,
@@ -217,7 +213,7 @@ export default function AgendaSection({
         listarEspera(clinicaId),
         listarPacientes(clinicaId),
         listarClientes(clinicaId),
-        listarServicios(clinicaId),
+        listarServiciosActivos(clinicaId),
         listarCitasPendientes(clinicaId),
       ]);
       setVets(v.filter((vet) => vet.activo !== false));
@@ -703,215 +699,5 @@ export default function AgendaSection({
         )}
       </div>
     </div>
-  );
-}
-
-function toLocalInputValue(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function CitaForm({
-  clinicaId,
-  pacientes,
-  clientes,
-  vets,
-  servicios,
-  initial,
-  defaultDay,
-  onCancel,
-  onSaved,
-}) {
-  const defaultStart = new Date(defaultDay);
-  if (!initial?.inicio) {
-    defaultStart.setHours(10, 0, 0, 0);
-  }
-  const [form, setForm] = useState({
-    paciente_id: initial?.paciente_id || "",
-    cliente_id: initial?.cliente_id || "",
-    veterinario_id: initial?.veterinario_id || "",
-    servicio_id: initial?.servicio_id || "",
-    inicio: toLocalInputValue(initial?.inicio) || toLocalInputValue(defaultStart.toISOString()),
-    fin: toLocalInputValue(initial?.fin) || "",
-    estado: initial?.estado || "confirmada",
-    motivo: initial?.motivo || "",
-    notas: initial?.notas || "",
-  });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  function onPacienteChange(pacienteId) {
-    const paciente = pacientes.find((p) => p.id === pacienteId);
-    setForm((f) => ({
-      ...f,
-      paciente_id: pacienteId,
-      cliente_id: paciente?.cliente_id || f.cliente_id,
-    }));
-  }
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-    if (!(await confirmGuardar(initial?.id ? "los cambios de la cita" : "la nueva cita"))) {
-      return;
-    }
-    setSaving(true);
-    setError("");
-    try {
-      let finISO = form.fin ? new Date(form.fin).toISOString() : null;
-      if (!finISO && form.estado !== "lista_espera" && form.inicio) {
-        finISO = new Date(
-          new Date(form.inicio).getTime() + SLOT_MINUTES * 60 * 1000,
-        ).toISOString();
-      }
-      const payload = {
-        paciente_id: form.paciente_id || null,
-        cliente_id: form.cliente_id || null,
-        veterinario_id: form.veterinario_id || null,
-        servicio_id: form.servicio_id || null,
-        inicio: form.estado === "lista_espera" ? null : new Date(form.inicio).toISOString(),
-        fin: finISO,
-        estado: form.estado,
-        motivo: form.motivo,
-        notas: form.notas,
-      };
-      if (initial?.id) {
-        await actualizarCita(initial.id, payload);
-      } else {
-        await crearCita(clinicaId, payload);
-      }
-      await onSaved();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar la cita.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className={`${cardClass} space-y-3`}>
-      <h3 className="font-semibold text-aguara-ink">
-        {initial?.id
-          ? "Reprogramar / editar cita"
-          : initial?.inicio
-            ? `Nueva cita · ${formatDateTime(initial.inicio)}`
-            : "Nueva cita"}
-      </h3>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Paciente" id="cita-pac">
-          <select
-            id="cita-pac"
-            className={fieldClass}
-            value={form.paciente_id}
-            onChange={(e) => onPacienteChange(e.target.value)}
-          >
-            <option value="">Seleccionar…</option>
-            {pacientes.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nombre} ({p.clinica_clientes?.nombre_completo || "—"})
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Cliente" id="cita-cli">
-          <select
-            id="cita-cli"
-            className={fieldClass}
-            value={form.cliente_id}
-            onChange={(e) => setForm((f) => ({ ...f, cliente_id: e.target.value }))}
-          >
-            <option value="">Seleccionar…</option>
-            {clientes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre_completo}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Veterinario" id="cita-vet">
-          <select
-            id="cita-vet"
-            className={fieldClass}
-            value={form.veterinario_id}
-            onChange={(e) => setForm((f) => ({ ...f, veterinario_id: e.target.value }))}
-          >
-            <option value="">Sin asignar</option>
-            {vets.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.nombre}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Servicio" id="cita-srv">
-          <select
-            id="cita-srv"
-            className={fieldClass}
-            value={form.servicio_id}
-            onChange={(e) => setForm((f) => ({ ...f, servicio_id: e.target.value }))}
-          >
-            <option value="">Sin servicio</option>
-            {servicios.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.nombre}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Inicio" id="cita-ini">
-          <input
-            id="cita-ini"
-            type="datetime-local"
-            className={fieldClass}
-            value={form.inicio}
-            onChange={(e) => setForm((f) => ({ ...f, inicio: e.target.value }))}
-            disabled={form.estado === "lista_espera"}
-          />
-        </Field>
-        <Field label="Fin" id="cita-fin">
-          <input
-            id="cita-fin"
-            type="datetime-local"
-            className={fieldClass}
-            value={form.fin}
-            onChange={(e) => setForm((f) => ({ ...f, fin: e.target.value }))}
-            disabled={form.estado === "lista_espera"}
-          />
-        </Field>
-        <Field label="Estado" id="cita-est">
-          <select
-            id="cita-est"
-            className={fieldClass}
-            value={form.estado}
-            onChange={(e) => setForm((f) => ({ ...f, estado: e.target.value }))}
-          >
-            {CITA_ESTADOS.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Motivo" id="cita-mot">
-          <input
-            id="cita-mot"
-            className={fieldClass}
-            value={form.motivo}
-            onChange={(e) => setForm((f) => ({ ...f, motivo: e.target.value }))}
-          />
-        </Field>
-      </div>
-      {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <div className="flex gap-2">
-        <button type="submit" disabled={saving} className={primaryBtnClass}>
-          {saving ? "Guardando…" : "Guardar"}
-        </button>
-        <button type="button" className={secondaryBtnClass} onClick={onCancel}>
-          Cancelar
-        </button>
-      </div>
-      <p className="text-xs text-stone-400">Última edición: {formatDateTime(initial?.creado_en)}</p>
-    </form>
   );
 }

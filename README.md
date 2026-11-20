@@ -53,3 +53,7 @@ veterinariaadomicilio@gmail.com
 
 huellitas@gmail.com
 huellitas@gmail.com
+
+
+Tutor = identidad Aguará (cuenta global): chapitas, portal, turnos en cualquier clínica, compartir perfil.
+Cliente = ficha local de esa clínica (agenda, pacientes, pagos). Puede existir sin ser usuario Aguará.

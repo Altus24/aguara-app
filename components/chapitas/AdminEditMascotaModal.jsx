@@ -6,6 +6,7 @@ import { supabase } from '@/lib/chapitas/supabaseClient';
 
 const ESPECIES = ['Perro', 'Gato'];
 const SEXOS = ['Macho', 'Hembra'];
+const TEMPERAMENTOS = ['Agresivo', 'Asustadizo', 'Nervioso', 'Tranquilo', 'Amigable'];
 
 const fieldClass =
   'w-full rounded-md border border-gray-300 px-3 py-2 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500';
@@ -17,6 +18,7 @@ function AdminEditMascotaModal({ mascota, onClose, onSaved }) {
     raza: '',
     sexo: 'Macho',
     castrado: 'no',
+    temperamento: '',
     nro_chip: '',
     enfermedad: '',
     medicacion: '',
@@ -38,6 +40,7 @@ function AdminEditMascotaModal({ mascota, onClose, onSaved }) {
       raza: mascota.raza || '',
       sexo: mascota.sexo === 'Hembra' ? 'Hembra' : 'Macho',
       castrado: mascota.castrado ? 'si' : 'no',
+      temperamento: mascota.temperamento || '',
       nro_chip: mascota.nro_chip || '',
       enfermedad: mascota.enfermedad || '',
       medicacion: mascota.medicacion || '',
@@ -94,6 +97,7 @@ function AdminEditMascotaModal({ mascota, onClose, onSaved }) {
         raza: form.raza.trim() || null,
         sexo: form.sexo,
         castrado: form.castrado === 'si',
+        temperamento: form.temperamento || null,
         nro_chip: form.nro_chip.trim() || null,
         enfermedad: form.enfermedad.trim() || null,
         medicacion: form.medicacion.trim() || null,
@@ -304,6 +308,26 @@ function AdminEditMascotaModal({ mascota, onClose, onSaved }) {
                   <option value="no">No</option>
                 </select>
               </div>
+            </div>
+            <div>
+              <label htmlFor="edit_temperamento" className="block text-sm font-medium text-gray-700 mb-1">
+                Temperamento *
+              </label>
+              <select
+                id="edit_temperamento"
+                name="temperamento"
+                required
+                value={form.temperamento}
+                onChange={handleChange}
+                className={fieldClass}
+              >
+                <option value="">Elegí una opción</option>
+                {TEMPERAMENTOS.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label htmlFor="edit_nro_chip" className="block text-sm font-medium text-gray-700 mb-1">

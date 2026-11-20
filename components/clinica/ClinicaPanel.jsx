@@ -28,17 +28,39 @@ const NAV = [
   { id: "config", label: "Configuración" },
 ];
 
+const TAB_STORAGE_KEY = "aguara_clinica_panel_tab";
+const NAV_IDS = new Set(NAV.map((item) => item.id));
+
+function readStoredTab() {
+  if (typeof window === "undefined") return "dashboard";
+  try {
+    const stored = window.sessionStorage.getItem(TAB_STORAGE_KEY);
+    return NAV_IDS.has(stored) ? stored : "dashboard";
+  } catch {
+    return "dashboard";
+  }
+}
+
 export default function ClinicaPanel() {
   const { clinica, isAuthenticated, authLoading, signOut, refreshClinica } = useClinicAuth();
   const router = useRouter();
-  const [tab, setTab] = useState("dashboard");
+  const [tab, setTab] = useState(readStoredTab);
   const [agendaFocusPendientes, setAgendaFocusPendientes] = useState(false);
   const [pendientes, setPendientes] = useState(0);
   const [notifs, setNotifs] = useState([]);
 
+  function selectTab(next) {
+    setTab(next);
+    try {
+      window.sessionStorage.setItem(TAB_STORAGE_KEY, next);
+    } catch {
+      /* ignore */
+    }
+  }
+
   function goAgenda({ focusPendientes = false } = {}) {
     setAgendaFocusPendientes(focusPendientes);
-    setTab("agenda");
+    selectTab("agenda");
     requestAnimationFrame(() => {
       document.getElementById("clinica-agenda")?.scrollIntoView({
         behavior: "smooth",
@@ -161,7 +183,7 @@ export default function ClinicaPanel() {
           <button
             key={item.id}
             type="button"
-            onClick={() => setTab(item.id)}
+            onClick={() => selectTab(item.id)}
             className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition ${
               tab === item.id
                 ? "bg-aguara-orange text-white"
@@ -183,7 +205,7 @@ export default function ClinicaPanel() {
           <DashboardSection
             clinicaId={clinica.id}
             onNavigate={(next) =>
-              next === "agenda" ? goAgenda({ focusPendientes: true }) : setTab(next)
+              next === "agenda" ? goAgenda({ focusPendientes: true }) : selectTab(next)
             }
           />
         ) : null}

@@ -26,10 +26,20 @@ export default function ConfirmHost() {
       aria-modal="true"
       aria-labelledby="confirm-host-title"
       onClick={() => answerConfirm(false)}
+      onKeyDown={(event) => {
+        // Evita que Enter/Espacio dispare submits de formularios detrás del modal.
+        if (event.key === "Enter" || event.key === " ") {
+          event.stopPropagation();
+        }
+      }}
     >
       <div
         className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl"
         onClick={(event) => event.stopPropagation()}
+        onSubmit={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
       >
         <h2 id="confirm-host-title" className="text-lg font-semibold text-stone-900">
           {state.title}

@@ -29,6 +29,7 @@ import {
   obtenerPaciente,
 } from "@/lib/chapitas/clinicaOps";
 import { crearTratamiento } from "@/lib/chapitas/mascotaPerfil";
+import { esVacunaVencida } from "@/lib/chapitas/vacunas";
 
 export default function HistoriasSection({ clinicaId }) {
   const [consultas, setConsultas] = useState([]);
@@ -554,6 +555,11 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
                 {vacunas.map((v) => (
                   <li key={`${v.origen || "clinica"}-${v.id}`}>
                     <strong>{v.nombre}</strong> · {formatDate(v.fecha)}
+                    {esVacunaVencida(v) ? (
+                      <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-800">
+                        Vencida
+                      </span>
+                    ) : null}
                     {v.origen === "tutor" ? " · (tutor)" : ""}
                   </li>
                 ))}
