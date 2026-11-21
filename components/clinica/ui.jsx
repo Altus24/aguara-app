@@ -1,3 +1,9 @@
+export {
+  formatDate,
+  formatDateTime,
+  formatTime,
+} from "@/lib/dateFormat";
+
 export const fieldClass =
   "w-full rounded-md border border-stone-300 px-3 py-2 text-sm text-aguara-ink outline-none focus:border-aguara-orange focus:ring-4 focus:ring-aguara-orange/15";
 
@@ -18,40 +24,6 @@ export function Field({ label, id, children, className = "" }) {
       {children}
     </div>
   );
-}
-
-export function formatDateTime(value) {
-  if (!value) return "—";
-  try {
-    return new Date(value).toLocaleString("es-AR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return String(value);
-  }
-}
-
-export function formatDate(value) {
-  if (!value) return "—";
-  try {
-    return new Date(value + (String(value).length <= 10 ? "T12:00:00" : "")).toLocaleDateString(
-      "es-AR",
-    );
-  } catch {
-    return String(value);
-  }
-}
-
-export function formatTime(value) {
-  if (!value) return "";
-  if (typeof value === "string" && value.includes("T")) {
-    return new Date(value).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
-  }
-  return String(value).slice(0, 5);
 }
 
 export const ESTADO_COLORS = {

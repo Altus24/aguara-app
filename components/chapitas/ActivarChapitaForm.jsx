@@ -9,6 +9,7 @@ import MascotaRegistroFields, {
 import { confirmGuardar } from '@/lib/confirmAction';
 import { supabase, getCanonicalInsertChapitaId } from '@/lib/chapitas/supabaseClient';
 import { generateChapitaQrSvg } from '@/lib/chapitas/chapitaQr';
+import { listarClinicas } from '@/lib/chapitas/tutorPortal';
 import {
   buscarTutorPorContacto,
   crearTutor,
@@ -44,10 +45,25 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
   const [submitting, setSubmitting] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
   const [error, setError] = useState('');
+  const [clinicas, setClinicas] = useState([]);
 
   useEffect(() => {
     return () => {
       if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    listarClinicas()
+      .then((rows) => {
+        if (!cancelled) setClinicas(rows || []);
+      })
+      .catch(() => {
+        if (!cancelled) setClinicas([]);
+      });
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -245,7 +261,8 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
         especie: petForm.especie,
         raza: petForm.raza.trim() || null,
         sexo: petForm.sexo,
-        castrado: petForm.castrado === 'si',
+        castrado:
+          petForm.castrado === 'si' ? true : petForm.castrado === 'no' ? false : null,
         temperamento: petForm.temperamento || null,
         fecha_nacimiento: petForm.fecha_nacimiento || null,
         peso: petForm.peso === '' ? null : Number(petForm.peso),
@@ -253,6 +270,7 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
         enfermedad: petForm.enfermedad.trim() || null,
         medicacion: petForm.medicacion.trim() || null,
         datos_adicionales: petForm.datos_adicionales.trim() || null,
+        clinica_cabecera_id: petForm.clinica_cabecera_id || null,
         foto_url: fotoUrl,
         nombre_dueno: tutorNombre,
         email_tutor: tutorEmail,
@@ -272,6 +290,18 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
         /temperamento|schema cache|does not exist/i.test(insertError.message || '')
       ) {
         delete mascotaPayload.temperamento;
+        ({ data, error: insertError } = await supabase
+          .from('mascotas')
+          .insert(mascotaPayload)
+          .select()
+          .single());
+      }
+
+      if (
+        insertError &&
+        /clinica_cabecera|schema cache|does not exist/i.test(insertError.message || '')
+      ) {
+        delete mascotaPayload.clinica_cabecera_id;
         ({ data, error: insertError } = await supabase
           .from('mascotas')
           .insert(mascotaPayload)
@@ -548,6 +578,7 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
             onPhoto={handlePhoto}
             fieldClass={fieldClass}
             fotoInputId="activar-foto"
+            clinicas={clinicas}
           />
 
           {error ? (

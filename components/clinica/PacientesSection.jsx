@@ -440,9 +440,9 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
         const p = await obtenerPaciente(pacienteId);
         const [c, v, d, a, vetsRows, serviciosRows, clientesRows] = await Promise.all([
           listarConsultas(clinicaId, { pacienteId }),
-          listarVacunasPacienteCompletas(p),
-          listarDesparasitacionesPacienteCompletas(p),
-          listarArchivosPacienteCompletas(p),
+          listarVacunasPacienteCompletas(p, { clinicaId }),
+          listarDesparasitacionesPacienteCompletas(p, { clinicaId }),
+          listarArchivosPacienteCompletas(p, { clinicaId }),
           listarVeterinarios(clinicaId),
           listarServiciosActivos(clinicaId),
           listarClientes(clinicaId),

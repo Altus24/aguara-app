@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { cardClass, EstadoBadge, formatTime, primaryBtnClass } from "@/components/clinica/ui";
+import { cardClass, EstadoBadge, formatDate, formatTime, primaryBtnClass } from "@/components/clinica/ui";
 import {
   alertasProximas,
   etiquetaEstado,
@@ -190,13 +190,13 @@ export default function DashboardSection({ clinicaId, onNavigate }) {
             {alertas.vacunas.map((v) => (
               <p key={v.id} className="text-sm text-stone-700">
                 Vacuna <strong>{v.nombre}</strong> de {v.clinica_pacientes?.nombre} · próximo{" "}
-                {v.proxima_fecha}
+                {formatDate(v.proxima_fecha)}
               </p>
             ))}
             {alertas.desparasitaciones.map((d) => (
               <p key={d.id} className="text-sm text-stone-700">
                 Desparasitación <strong>{d.producto}</strong> de {d.clinica_pacientes?.nombre} ·
-                próximo {d.proxima_fecha}
+                próximo {formatDate(d.proxima_fecha)}
               </p>
             ))}
             {stockBajo.map((p) => (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { confirmEliminar } from "@/lib/confirmAction";
 import SignaturePad from "@/components/clinica/SignaturePad";
@@ -18,6 +18,11 @@ import {
   eliminarVeterinario,
   listarVeterinarios,
 } from "@/lib/chapitas/clinicaOps";
+import {
+  ESPECIALIDAD_OTRA,
+  opcionesEspecialidad,
+  valorSelectEspecialidad,
+} from "@/lib/chapitas/especialidadesVet";
 import { confirmGuardar } from "@/lib/confirmAction";
 import {
   DIAS_SEMANA,
@@ -242,12 +247,18 @@ const emptyVetForm = {
 function Veterinarios({ clinicaId }) {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(emptyVetForm);
+  const [espSelect, setEspSelect] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [firmaKey, setFirmaKey] = useState(0);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+
+  const especialidadesOpts = useMemo(
+    () => opcionesEspecialidad(items.map((v) => v.especialidad)),
+    [items],
+  );
 
   async function reload() {
     setItems(await listarVeterinarios(clinicaId));
@@ -261,6 +272,7 @@ function Veterinarios({ clinicaId }) {
   function openCreate() {
     setEditingId(null);
     setForm(emptyVetForm);
+    setEspSelect("");
     setFirmaKey((k) => k + 1);
     setShowForm(true);
     setError("");
@@ -276,6 +288,7 @@ function Veterinarios({ clinicaId }) {
       matricula: vet.matricula || "",
       firma_digital: vet.firma_digital || "",
     });
+    setEspSelect(valorSelectEspecialidad(vet.especialidad, especialidadesOpts));
     setFirmaKey((k) => k + 1);
     setShowForm(true);
     setError("");
@@ -364,13 +377,41 @@ function Veterinarios({ clinicaId }) {
               />
             </Field>
             <Field label="Especialidad" id="vet-esp">
-              <input
+              <select
                 id="vet-esp"
                 className={fieldClass}
-                value={form.especialidad}
-                onChange={(e) => setForm((f) => ({ ...f, especialidad: e.target.value }))}
-              />
+                value={espSelect}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setEspSelect(value);
+                  if (value === ESPECIALIDAD_OTRA) {
+                    setForm((f) => ({ ...f, especialidad: "" }));
+                  } else {
+                    setForm((f) => ({ ...f, especialidad: value }));
+                  }
+                }}
+              >
+                <option value="">Sin especialidad</option>
+                {especialidadesOpts.map((esp) => (
+                  <option key={esp} value={esp}>
+                    {esp}
+                  </option>
+                ))}
+                <option value={ESPECIALIDAD_OTRA}>Otra (agregar)…</option>
+              </select>
             </Field>
+            {espSelect === ESPECIALIDAD_OTRA ? (
+              <Field label="Nueva especialidad" id="vet-esp-otra">
+                <input
+                  id="vet-esp-otra"
+                  required
+                  className={fieldClass}
+                  value={form.especialidad}
+                  onChange={(e) => setForm((f) => ({ ...f, especialidad: e.target.value }))}
+                  placeholder="Escribí la especialidad"
+                />
+              </Field>
+            ) : null}
             <Field label="Email" id="vet-email">
               <input
                 id="vet-email"

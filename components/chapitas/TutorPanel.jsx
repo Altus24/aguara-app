@@ -1,44 +1,56 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import AgendaSection from "@/components/tutor/AgendaSection";
 import HistorialSection from "@/components/tutor/HistorialSection";
 import MascotasSection from "@/components/tutor/MascotasSection";
 import PerfilSection from "@/components/tutor/PerfilSection";
+import PermisosSection from "@/components/tutor/PermisosSection";
 import RecordatoriosSection from "@/components/tutor/RecordatoriosSection";
 import { useTutorAuth } from "@/context/TutorAuthContext";
 import {
   listarNotificacionesTutor,
   listarSolicitudesCompartirTutor,
   listarSolicitudesPerfilTutor,
+  marcarNotificacionesTutorLeidas,
 } from "@/lib/chapitas/tutorPortal";
 
+const TIPOS_CITA_NOTIF = new Set(["cita_confirmada", "cita_cancelada", "cita_reprogramada"]);
+
 const NAV = [
+  { id: "recordatorios", label: "Recordatorios" },
   { id: "mascotas", label: "Mis mascotas" },
   { id: "agenda", label: "Mis citas" },
   { id: "historial", label: "Historial clínico" },
-  { id: "recordatorios", label: "Recordatorios" },
+  { id: "permisos", label: "Permisos" },
   { id: "perfil", label: "Perfil" },
 ];
+
+const ALLOWED_TABS = new Set(NAV.map((item) => item.id));
+const DEFAULT_TAB = "recordatorios";
 
 export default function TutorPanel() {
   const { tutor, isAuthenticated, authLoading, signOut } = useTutorAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState(() => {
-    if (typeof window === "undefined") return "mascotas";
+    if (typeof window === "undefined") return DEFAULT_TAB;
     try {
+      const fromUrl = new URLSearchParams(window.location.search).get("tab");
       const stored = window.sessionStorage.getItem("aguara_tutor_panel_tab");
-      const allowed = new Set(["mascotas", "agenda", "historial", "recordatorios", "perfil"]);
-      return allowed.has(stored) ? stored : "mascotas";
+      if (ALLOWED_TABS.has(fromUrl)) return fromUrl;
+      return ALLOWED_TABS.has(stored) ? stored : DEFAULT_TAB;
     } catch {
-      return "mascotas";
+      return DEFAULT_TAB;
     }
   });
   const [pendientesPerfil, setPendientesPerfil] = useState(0);
   const [notifMensaje, setNotifMensaje] = useState("");
+  const [notifCita, setNotifCita] = useState(null);
+  const [agendaPrefill, setAgendaPrefill] = useState(null);
 
   function selectTab(next) {
     setTab(next);
@@ -55,6 +67,23 @@ export default function TutorPanel() {
     }
   }, [authLoading, isAuthenticated, router]);
 
+  useEffect(() => {
+    const tabParam = searchParams.get("tab");
+    if (ALLOWED_TABS.has(tabParam)) selectTab(tabParam);
+
+    const sacar = searchParams.get("sacar") === "1";
+    const mascota = searchParams.get("mascota");
+    if (sacar || mascota) {
+      setAgendaPrefill({
+        openForm: sacar,
+        mascotaId: mascota || null,
+      });
+      if (sacar) selectTab("agenda");
+      router.replace("/tutor", { scroll: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   async function loadAlerts() {
     if (!tutor?.id) return;
     try {
@@ -64,8 +93,11 @@ export default function TutorPanel() {
         listarNotificacionesTutor(tutor.id, { soloNoLeidas: true }),
       ]);
       setPendientesPerfil(sols.length + shares.length);
+      const citaNotif = notifs.find((n) => TIPOS_CITA_NOTIF.has(n.tipo)) || null;
+      setNotifCita(citaNotif);
+      const perfilNotifs = notifs.filter((n) => !TIPOS_CITA_NOTIF.has(n.tipo));
       setNotifMensaje(
-        notifs[0]?.mensaje ||
+        perfilNotifs[0]?.mensaje ||
           shares[0]?.clinicas?.nombre ||
           sols[0]?.clinicas?.nombre ||
           "",
@@ -73,6 +105,7 @@ export default function TutorPanel() {
     } catch {
       setPendientesPerfil(0);
       setNotifMensaje("");
+      setNotifCita(null);
     }
   }
 
@@ -112,6 +145,34 @@ export default function TutorPanel() {
           Cerrar sesión
         </button>
       </div>
+
+      {notifCita ? (
+        <div className="mt-6 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-sky-950">{notifCita.titulo}</p>
+              <p className="mt-1 text-sm text-sky-900/80">{notifCita.mensaje}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-full bg-aguara-orange px-4 py-2 text-sm font-medium text-white"
+                onClick={async () => {
+                  selectTab("agenda");
+                  try {
+                    await marcarNotificacionesTutorLeidas(tutor.id, { soloTiposCita: true });
+                    setNotifCita(null);
+                  } catch {
+                    /* ignore */
+                  }
+                }}
+              >
+                Ver mis citas
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {pendientesPerfil > 0 ? (
         <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
@@ -161,9 +222,16 @@ export default function TutorPanel() {
 
       <div className="mt-6">
         {tab === "mascotas" ? <MascotasSection tutor={tutor} /> : null}
-        {tab === "agenda" ? <AgendaSection tutor={tutor} /> : null}
+        {tab === "agenda" ? (
+          <AgendaSection
+            tutor={tutor}
+            prefill={agendaPrefill}
+            onPrefillConsumed={() => setAgendaPrefill(null)}
+          />
+        ) : null}
         {tab === "historial" ? <HistorialSection tutor={tutor} /> : null}
         {tab === "recordatorios" ? <RecordatoriosSection tutor={tutor} /> : null}
+        {tab === "permisos" ? <PermisosSection tutor={tutor} /> : null}
         {tab === "perfil" ? (
           <PerfilSection tutor={tutor} onSolicitudesChange={loadAlerts} />
         ) : null}

@@ -183,7 +183,11 @@ export default function ClinicaPanel() {
           <button
             key={item.id}
             type="button"
-            onClick={() => selectTab(item.id)}
+            onClick={() =>
+              item.id === "agenda" && pendientes > 0
+                ? goAgenda({ focusPendientes: true })
+                : selectTab(item.id)
+            }
             className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition ${
               tab === item.id
                 ? "bg-aguara-orange text-white"

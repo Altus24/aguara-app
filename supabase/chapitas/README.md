@@ -36,12 +36,16 @@ Solo re-ejecutá algo si falta una migración puntual. Orden original:
 30. `30_servicios_dedupe.sql` ← une/limpia servicios duplicados por clínica + código
 31. `31_mascota_digital_vincular_chapita.sql` ← mascota sin QR + vincular chapita física
 32. `32_mascota_temperamento.sql` ← temperamento (+ castrado en pacientes de clínica)
+33. `33_mascota_clinica_cabecera.sql` ← clínica de cabecera opcional por mascota
+34. `34_tutor_tratamientos.sql` ← tratamientos cargados por el tutor (como vacunas)
+35. `35_tutor_recordatorios.sql` ← medicación/recordatorios cargados por el tutor
+36. `36_tutor_perfil_ubicacion_notif.sql` ← dirección detallada, Maps, notif mobile y preferencias de recordatorio
 
 No corras `01` a ciegas si las tablas `mascotas` / `chapitas` / `admin_users` ya existen.
-En proyectos ya en uso, ejecutá al menos el `07`, el `09`, el `10`–`32` para el formulario
+En proyectos ya en uso, ejecutá al menos el `07`, el `09`, el `10`–`36` para el formulario
 ampliado, clínicas, portal de tutores, notificaciones, horarios por vet, cambios de perfil,
-fecha de modificación de HC, vacunas del tutor, compartir perfil/mascota, eliminar tirada
-y nuevas cantidades por tirada.
+fecha de modificación de HC, vacunas/tratamientos/recordatorios del tutor, compartir
+perfil/mascota, eliminar tirada y nuevas cantidades por tirada.
 
 ## Superadmin
 

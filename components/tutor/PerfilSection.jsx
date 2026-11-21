@@ -11,6 +11,13 @@ import {
   secondaryBtnClass,
 } from "@/components/tutor/ui";
 import { useTutorAuth } from "@/context/TutorAuthContext";
+import { confirmAccion, confirmGuardar } from "@/lib/confirmAction";
+import {
+  ANTICIPACION_OPTS,
+  CANAL_OPTS,
+  emptyTutorPerfilForm,
+  pedirPermisoNotificacionesMobile,
+} from "@/lib/chapitas/tutorPerfilPrefs";
 import {
   aceptarCambioPerfilTutor,
   aceptarCompartirPerfilTutor,
@@ -29,7 +36,18 @@ const LABELS = {
   telefono: "Teléfono",
   telefono_secundario: "Tel. secundario",
   direccion: "Dirección",
+  calle: "Calle",
+  numeracion: "Numeración",
+  tipo_vivienda: "Tipo de vivienda",
+  piso_depto: "Piso / depto",
+  localidad: "Localidad",
+  provincia: "Provincia",
+  maps_url: "Ubicación Maps",
 };
+
+function toggleInList(list, id) {
+  return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+}
 
 export default function PerfilSection({ tutor, onSolicitudesChange }) {
   const { refreshTutor } = useTutorAuth();
@@ -39,14 +57,9 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
   const [compartir, setCompartir] = useState([]);
   const [mascotas, setMascotas] = useState([]);
   const [mascotaElegida, setMascotaElegida] = useState({});
-  const [form, setForm] = useState({
-    nombre_completo: tutor.nombre_completo || "",
-    telefono: tutor.telefono || "",
-    telefono_secundario: tutor.telefono_secundario || "",
-    direccion: tutor.direccion || "",
-    clinica_preferida_id: tutor.clinica_preferida_id || "",
-  });
+  const [form, setForm] = useState(() => emptyTutorPerfilForm(tutor));
   const [saving, setSaving] = useState(false);
+  const [enablingNotif, setEnablingNotif] = useState(false);
   const [resolvingId, setResolvingId] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -89,13 +102,7 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
           }
           return next;
         });
-        setForm({
-          nombre_completo: profile.nombre_completo || "",
-          telefono: profile.telefono || "",
-          telefono_secundario: profile.telefono_secundario || "",
-          direccion: profile.direccion || "",
-          clinica_preferida_id: profile.clinica_preferida_id || "",
-        });
+        setForm(emptyTutorPerfilForm(profile));
         refreshTutor({ ...tutor, ...profile });
       } catch (err) {
         if (!cancelled) {
@@ -112,17 +119,39 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (!(await confirmGuardar("el perfil del tutor"))) return;
     setSaving(true);
     setError("");
     setMessage("");
     try {
       const updated = await actualizarTutor(tutor.id, form);
+      setForm(emptyTutorPerfilForm(updated));
       refreshTutor({ ...tutor, ...updated, email: tutor.email });
       setMessage("Perfil actualizado.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleToggleNotifMobile(checked) {
+    setError("");
+    setMessage("");
+    if (!checked) {
+      setForm((f) => ({ ...f, notif_push_mobile: false }));
+      return;
+    }
+    setEnablingNotif(true);
+    try {
+      await pedirPermisoNotificacionesMobile();
+      setForm((f) => ({ ...f, notif_push_mobile: true }));
+      setMessage("Notificaciones del celular activadas. Guardá el perfil para confirmar.");
+    } catch (err) {
+      setForm((f) => ({ ...f, notif_push_mobile: false }));
+      setError(err instanceof Error ? err.message : "No se pudieron activar las notificaciones.");
+    } finally {
+      setEnablingNotif(false);
     }
   }
 
@@ -136,10 +165,7 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
         refreshTutor({ ...tutor, ...updated, email: tutor.email });
         setForm((f) => ({
           ...f,
-          nombre_completo: updated.nombre_completo || "",
-          telefono: updated.telefono || "",
-          telefono_secundario: updated.telefono_secundario || "",
-          direccion: updated.direccion || "",
+          ...emptyTutorPerfilForm(updated),
         }));
         setMessage("Cambio aceptado. Tu perfil se actualizó.");
       } else {
@@ -158,7 +184,9 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
     <div className="space-y-5">
       <div>
         <h2 className="text-lg font-semibold text-aguara-ink">Perfil / Datos</h2>
-        <p className="text-sm text-stone-500">Datos personales y sucursal de preferencia</p>
+        <p className="text-sm text-stone-500">
+          Datos personales, dirección detallada, notificaciones y recordatorios
+        </p>
       </div>
 
       {compartir.length > 0 ? (
@@ -237,9 +265,9 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
                   onClick={async () => {
                     const clinicaLabel = sol.clinicas?.nombre || "la clínica";
                     if (
-                      !confirmAccion(
+                      !(await confirmAccion(
                         `¿Rechazar la solicitud de ${clinicaLabel}?`,
-                      )
+                      ))
                     ) {
                       return;
                     }
@@ -335,7 +363,7 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
         </div>
       ) : null}
 
-      <form onSubmit={handleSubmit} className={`${cardClass} space-y-4`}>
+      <form onSubmit={handleSubmit} className={`${cardClass} space-y-5`}>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Nombre completo" id="tu-nombre">
             <input
@@ -371,15 +399,156 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
               onChange={(e) => setForm((f) => ({ ...f, telefono_secundario: e.target.value }))}
             />
           </Field>
-          <Field label="Dirección" id="tu-dir" className="sm:col-span-2">
+        </div>
+
+        <div className="space-y-3 border-t border-stone-100 pt-4">
+          <h3 className="text-sm font-semibold text-aguara-ink">Dirección</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Calle" id="tu-calle">
+              <input
+                id="tu-calle"
+                className={fieldClass}
+                value={form.calle}
+                onChange={(e) => setForm((f) => ({ ...f, calle: e.target.value }))}
+                placeholder="Ej. Av. San Martín"
+              />
+            </Field>
+            <Field label="Numeración" id="tu-num">
+              <input
+                id="tu-num"
+                className={fieldClass}
+                value={form.numeracion}
+                onChange={(e) => setForm((f) => ({ ...f, numeracion: e.target.value }))}
+                placeholder="Ej. 1234"
+              />
+            </Field>
+            <Field label="Casa o edificio" id="tu-vivienda">
+              <select
+                id="tu-vivienda"
+                className={fieldClass}
+                value={form.tipo_vivienda}
+                onChange={(e) => setForm((f) => ({ ...f, tipo_vivienda: e.target.value }))}
+              >
+                <option value="">Seleccionar…</option>
+                <option value="casa">Casa</option>
+                <option value="edificio">Edificio</option>
+              </select>
+            </Field>
+            <Field label="Piso / departamento" id="tu-piso">
+              <input
+                id="tu-piso"
+                className={fieldClass}
+                value={form.piso_depto}
+                onChange={(e) => setForm((f) => ({ ...f, piso_depto: e.target.value }))}
+                placeholder={form.tipo_vivienda === "edificio" ? "Ej. 3° B" : "Opcional"}
+              />
+            </Field>
+            <Field label="Localidad" id="tu-localidad">
+              <input
+                id="tu-localidad"
+                className={fieldClass}
+                value={form.localidad}
+                onChange={(e) => setForm((f) => ({ ...f, localidad: e.target.value }))}
+                placeholder="Ej. Godoy Cruz"
+              />
+            </Field>
+            <Field label="Provincia" id="tu-provincia">
+              <input
+                id="tu-provincia"
+                className={fieldClass}
+                value={form.provincia}
+                onChange={(e) => setForm((f) => ({ ...f, provincia: e.target.value }))}
+                placeholder="Ej. Mendoza"
+              />
+            </Field>
+            <Field label="Link de ubicación (Google Maps)" id="tu-maps" className="sm:col-span-2">
+              <input
+                id="tu-maps"
+                type="url"
+                className={fieldClass}
+                value={form.maps_url}
+                onChange={(e) => setForm((f) => ({ ...f, maps_url: e.target.value }))}
+                placeholder="https://maps.google.com/… (pegar enlace de Maps)"
+              />
+            </Field>
+          </div>
+        </div>
+
+        <div className="space-y-3 border-t border-stone-100 pt-4">
+          <h3 className="text-sm font-semibold text-aguara-ink">Notificaciones</h3>
+          <label className="flex items-start gap-3 rounded-xl border border-stone-200 bg-stone-50/60 p-3 text-sm text-aguara-ink">
             <input
-              id="tu-dir"
-              className={fieldClass}
-              value={form.direccion}
-              onChange={(e) => setForm((f) => ({ ...f, direccion: e.target.value }))}
+              type="checkbox"
+              className="mt-0.5"
+              checked={form.notif_push_mobile}
+              disabled={enablingNotif}
+              onChange={(e) => handleToggleNotifMobile(e.target.checked)}
             />
-          </Field>
-          <Field label="Sucursal de preferencia" id="tu-suc" className="sm:col-span-2">
+            <span>
+              <span className="font-medium">Activar notificaciones en el celular</span>
+              <span className="mt-0.5 block text-stone-500">
+                Pedimos permiso del navegador/dispositivo para avisarte de turnos y recordatorios.
+                {enablingNotif ? " Solicitando permiso…" : ""}
+              </span>
+            </span>
+          </label>
+        </div>
+
+        <div className="space-y-3 border-t border-stone-100 pt-4">
+          <h3 className="text-sm font-semibold text-aguara-ink">Recordatorios</h3>
+          <p className="text-sm text-stone-500">
+            Elegí cuánto antes avisarte y por qué canales (podés marcar varios).
+          </p>
+          <fieldset>
+            <legend className="mb-2 text-sm font-medium text-aguara-ink">Anticipación</legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {ANTICIPACION_OPTS.map((opt) => (
+                <label
+                  key={opt.id}
+                  className="flex items-center gap-2 rounded-lg border border-stone-200 px-3 py-2 text-sm text-aguara-ink"
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.recordatorio_anticipacion.includes(opt.id)}
+                    onChange={() =>
+                      setForm((f) => ({
+                        ...f,
+                        recordatorio_anticipacion: toggleInList(f.recordatorio_anticipacion, opt.id),
+                      }))
+                    }
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend className="mb-2 text-sm font-medium text-aguara-ink">Canales</legend>
+            <div className="grid gap-2 sm:grid-cols-1">
+              {CANAL_OPTS.map((opt) => (
+                <label
+                  key={opt.id}
+                  className="flex items-center gap-2 rounded-lg border border-stone-200 px-3 py-2 text-sm text-aguara-ink"
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.recordatorio_canales.includes(opt.id)}
+                    onChange={() =>
+                      setForm((f) => ({
+                        ...f,
+                        recordatorio_canales: toggleInList(f.recordatorio_canales, opt.id),
+                      }))
+                    }
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+
+        <div className="border-t border-stone-100 pt-4">
+          <Field label="Sucursal de preferencia" id="tu-suc">
             <select
               id="tu-suc"
               className={fieldClass}
@@ -396,6 +565,7 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
             </select>
           </Field>
         </div>
+
         {error ? <p className="text-sm text-red-700">{error}</p> : null}
         {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
         <button type="submit" disabled={saving} className={primaryBtnClass}>

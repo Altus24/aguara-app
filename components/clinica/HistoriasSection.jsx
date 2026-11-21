@@ -29,7 +29,7 @@ import {
   obtenerPaciente,
 } from "@/lib/chapitas/clinicaOps";
 import { crearTratamiento } from "@/lib/chapitas/mascotaPerfil";
-import { esVacunaVencida } from "@/lib/chapitas/vacunas";
+import { esVacunaVencida, vacunasParaEspecie } from "@/lib/chapitas/vacunas";
 
 export default function HistoriasSection({ clinicaId }) {
   const [consultas, setConsultas] = useState([]);
@@ -398,9 +398,9 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
       if (c.paciente_id) {
         const pac = await obtenerPaciente(c.paciente_id);
         const [vacunasFull, despRows, arch] = await Promise.all([
-          listarVacunasPacienteCompletas(pac),
-          listarDesparasitacionesPacienteCompletas(pac),
-          listarArchivosPacienteCompletas(pac),
+          listarVacunasPacienteCompletas(pac, { clinicaId }),
+          listarDesparasitacionesPacienteCompletas(pac, { clinicaId }),
+          listarArchivosPacienteCompletas(pac, { clinicaId }),
         ]);
         setPaciente(pac);
         setVacunas(vacunasFull);
@@ -713,13 +713,19 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
           }}
         >
           <h3 className="font-semibold text-aguara-ink">Vacuna</h3>
-          <input
+          <select
             required
-            placeholder="Nombre"
             className={fieldClass}
             value={vacuna.nombre}
             onChange={(e) => setVacuna((v) => ({ ...v, nombre: e.target.value }))}
-          />
+          >
+            <option value="">Seleccionar vacuna…</option>
+            {vacunasParaEspecie(paciente?.especie).map((nombre) => (
+              <option key={nombre} value={nombre}>
+                {nombre}
+              </option>
+            ))}
+          </select>
           <input
             type="date"
             className={fieldClass}

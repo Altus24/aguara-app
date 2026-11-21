@@ -217,11 +217,14 @@ function FichaMascota() {
               <strong>Sexo:</strong> {mascota.sexo}
             </p>
           )}
-          {mascota.castrado !== null && mascota.castrado !== undefined && (
-            <p>
-              <strong>Castrado:</strong> {mascota.castrado ? 'Sí' : 'No'}
-            </p>
-          )}
+          <p>
+            <strong>Castrado:</strong>{' '}
+            {mascota.castrado === true
+              ? 'Sí'
+              : mascota.castrado === false
+                ? 'No'
+                : 'No lo sé'}
+          </p>
           <p>
             <strong>Temperamento:</strong>{' '}
             {mascota.temperamento || 'Sin cargar'}

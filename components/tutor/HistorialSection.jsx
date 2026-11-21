@@ -1,8 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { cardClass, formatDate, formatDateTime, primaryBtnClass, secondaryBtnClass } from "@/components/tutor/ui";
+import {
+  cardClass,
+  fieldClass,
+  formatDate,
+  formatDateTime,
+  primaryBtnClass,
+  secondaryBtnClass,
+} from "@/components/tutor/ui";
 import {
   buildConsultaText,
   buildHistorialText,
@@ -11,8 +18,103 @@ import {
 } from "@/lib/chapitas/tutorPortal";
 import { esVacunaVencida } from "@/lib/chapitas/vacunas";
 
+function mascotaKeyOf(row) {
+  return row.mascota_key || row.clinica_pacientes?.nombre || "mascota";
+}
+
+function groupByMascota(rows) {
+  const map = new Map();
+  for (const row of rows || []) {
+    const key = mascotaKeyOf(row);
+    const nombre = row.mascota_nombre || row.clinica_pacientes?.nombre || "Mascota";
+    if (!map.has(key)) map.set(key, { key, nombre, items: [] });
+    map.get(key).items.push(row);
+  }
+  return [...map.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+}
+
+function filterByMascota(rows, mascotaKey) {
+  if (!mascotaKey) return rows || [];
+  return (rows || []).filter((r) => mascotaKeyOf(r) === mascotaKey);
+}
+
+function CollapsibleItems({ items, groupKey, expanded, onToggle, renderItem }) {
+  const visible = expanded ? items : items.slice(0, 1);
+  const ocultos = Math.max(0, items.length - 1);
+  return (
+    <div>
+      <ul className="space-y-2 text-sm">{visible.map(renderItem)}</ul>
+      {ocultos > 0 ? (
+        <button
+          type="button"
+          className="mt-2 text-sm font-medium text-aguara-orange hover:underline"
+          onClick={() => onToggle(groupKey)}
+        >
+          {expanded ? "Ver menos" : `Ver más (${ocultos} anterior${ocultos === 1 ? "" : "es"})`}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function MascotaGroupedList({ rows, emptyText, renderItem, showGroups, resetKey }) {
+  const [expanded, setExpanded] = useState(() => new Set());
+
+  useEffect(() => {
+    setExpanded(new Set());
+  }, [resetKey, showGroups]);
+
+  function toggle(groupKey) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) next.delete(groupKey);
+      else next.add(groupKey);
+      return next;
+    });
+  }
+
+  if (!rows.length) {
+    return <p className="mt-3 text-sm text-stone-500">{emptyText}</p>;
+  }
+
+  if (!showGroups) {
+    return (
+      <div className="mt-3">
+        <CollapsibleItems
+          items={rows}
+          groupKey="all"
+          expanded={expanded.has("all")}
+          onToggle={toggle}
+          renderItem={renderItem}
+        />
+      </div>
+    );
+  }
+
+  const groups = groupByMascota(rows);
+  return (
+    <div className="mt-3 space-y-4">
+      {groups.map((g) => (
+        <div key={g.key}>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-aguara-orange">
+            {g.nombre}
+          </p>
+          <CollapsibleItems
+            items={g.items}
+            groupKey={g.key}
+            expanded={expanded.has(g.key)}
+            onToggle={toggle}
+            renderItem={renderItem}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function HistorialSection({ tutor }) {
   const [data, setData] = useState({
+    mascotas: [],
     consultas: [],
     vacunas: [],
     desparasitaciones: [],
@@ -20,6 +122,40 @@ export default function HistorialSection({ tutor }) {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [mascotaFiltro, setMascotaFiltro] = useState("");
+
+  const opcionesMascota = useMemo(() => {
+    const fromPets = (data.mascotas || [])
+      .filter((m) => m.chapita_id || m.paciente_clinico_id)
+      .map((m) => ({
+        key: m.chapita_id || m.paciente_clinico_id,
+        nombre: m.nombre,
+      }));
+    const seen = new Set(fromPets.map((p) => p.key));
+    for (const row of [
+      ...(data.consultas || []),
+      ...(data.vacunas || []),
+      ...(data.desparasitaciones || []),
+      ...(data.archivos || []),
+    ]) {
+      const key = row.mascota_key || row.clinica_pacientes?.nombre;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      fromPets.push({
+        key,
+        nombre: row.mascota_nombre || row.clinica_pacientes?.nombre || "Mascota",
+      });
+    }
+    return fromPets.sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  }, [data]);
+
+  const variasMascotas = opcionesMascota.length > 1;
+  const showGroups = variasMascotas && !mascotaFiltro;
+
+  const consultas = filterByMascota(data.consultas, mascotaFiltro);
+  const vacunas = filterByMascota(data.vacunas, mascotaFiltro);
+  const desparasitaciones = filterByMascota(data.desparasitaciones, mascotaFiltro);
+  const archivos = filterByMascota(data.archivos, mascotaFiltro);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,12 +182,15 @@ export default function HistorialSection({ tutor }) {
   function descargarTodo() {
     const text = buildHistorialText({
       tutor,
-      consultas: data.consultas,
-      vacunas: data.vacunas,
-      desparasitaciones: data.desparasitaciones,
-      archivos: data.archivos,
+      consultas,
+      vacunas,
+      desparasitaciones,
+      archivos,
     });
-    downloadTextFile(`historial-clinico-${tutor.email}.txt`, text);
+    const suffix = mascotaFiltro
+      ? `-${opcionesMascota.find((m) => m.key === mascotaFiltro)?.nombre || "mascota"}`
+      : "";
+    downloadTextFile(`historial-clinico${suffix}-${tutor.email}.txt`, text);
   }
 
   return (
@@ -68,6 +207,27 @@ export default function HistorialSection({ tutor }) {
         </button>
       </div>
 
+      {variasMascotas ? (
+        <div className={cardClass}>
+          <label className="block text-sm" htmlFor="hist-filtro-mascota">
+            <span className="mb-1 block font-medium text-stone-700">Ver por mascota</span>
+            <select
+              id="hist-filtro-mascota"
+              className={fieldClass}
+              value={mascotaFiltro}
+              onChange={(e) => setMascotaFiltro(e.target.value)}
+            >
+              <option value="">Todas las mascotas (agrupadas)</option>
+              {opcionesMascota.map((m) => (
+                <option key={m.key} value={m.key}>
+                  {m.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : null}
+
       {error ? (
         <p className="text-sm text-red-700" role="alert">
           {error}
@@ -78,28 +238,30 @@ export default function HistorialSection({ tutor }) {
         <h3 className="font-semibold text-aguara-ink">Consultas anteriores</h3>
         {loading ? (
           <p className="mt-3 text-sm text-stone-500">Cargando…</p>
-        ) : data.consultas.length === 0 ? (
-          <p className="mt-3 text-sm text-stone-500">
-            Todavía no hay consultas compartidas por tu clínica.
-          </p>
         ) : (
-          <ul className="mt-3 divide-y divide-stone-100">
-            {data.consultas.map((c) => (
-              <li key={c.id} className="py-3">
+          <MascotaGroupedList
+            rows={consultas}
+            emptyText="Todavía no hay consultas compartidas por tu clínica."
+            showGroups={showGroups}
+            resetKey={mascotaFiltro}
+            renderItem={(c) => (
+              <li key={c.id} className="rounded-xl bg-aguara-cream/30 px-3 py-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="font-medium text-aguara-ink">
-                      {c.clinica_pacientes?.nombre || "Mascota"} · {formatDateTime(c.fecha)}
+                      {!showGroups ? `${c.mascota_nombre || c.clinica_pacientes?.nombre || "Mascota"} · ` : ""}
+                      {formatDateTime(c.fecha)}
+                      {c.clinicas?.nombre ? ` · ${c.clinicas.nombre}` : ""}
                     </p>
                     <p className="text-sm text-stone-600">Motivo: {c.motivo || "—"}</p>
-                    <p className="text-sm text-stone-600">
-                      Diagnóstico: {c.diagnostico || "—"}
-                    </p>
+                    <p className="text-sm text-stone-600">Diagnóstico: {c.diagnostico || "—"}</p>
                     {c.tratamiento ? (
                       <p className="text-sm text-stone-600">Tratamiento: {c.tratamiento}</p>
                     ) : null}
                     {c.medicacion ? (
-                      <p className="text-sm text-stone-600">Indicaciones / medicación: {c.medicacion}</p>
+                      <p className="text-sm text-stone-600">
+                        Indicaciones / medicación: {c.medicacion}
+                      </p>
                     ) : null}
                   </div>
                   <button
@@ -107,7 +269,7 @@ export default function HistorialSection({ tutor }) {
                     className={secondaryBtnClass}
                     onClick={() =>
                       downloadTextFile(
-                        `consulta-${c.clinica_pacientes?.nombre || "mascota"}-${String(c.fecha).slice(0, 10)}.txt`,
+                        `consulta-${c.mascota_nombre || "mascota"}-${String(c.fecha).slice(0, 10)}.txt`,
                         buildConsultaText(c),
                       )
                     }
@@ -116,75 +278,85 @@ export default function HistorialSection({ tutor }) {
                   </button>
                 </div>
               </li>
-            ))}
-          </ul>
+            )}
+          />
         )}
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
         <div className={cardClass}>
           <h3 className="font-semibold text-aguara-ink">Vacunas</h3>
-          {data.vacunas.length === 0 ? (
-            <p className="mt-3 text-sm text-stone-500">Sin vacunas registradas.</p>
-          ) : (
-            <ul className="mt-3 space-y-2 text-sm">
-              {data.vacunas.map((v) => (
-                <li key={`${v.origen || "clinica"}-${v.id}`}>
-                  <strong>{v.clinica_pacientes?.nombre || "Mascota"}</strong> · {v.nombre} ·{" "}
-                  {formatDate(v.fecha)}
-                  {esVacunaVencida(v) ? (
-                    <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-800">
-                      Vencida
-                    </span>
-                  ) : null}
-                  {v.proxima_fecha ? ` · próxima ${formatDate(v.proxima_fecha)}` : ""}
-                  {v.origen === "tutor" ? " · cargada por vos" : ""}
-                </li>
-              ))}
-            </ul>
-          )}
+          <MascotaGroupedList
+            rows={vacunas}
+            emptyText="Sin vacunas registradas."
+            showGroups={showGroups}
+            resetKey={mascotaFiltro}
+            renderItem={(v) => (
+              <li key={`${v.origen || "clinica"}-${v.id}`}>
+                {!showGroups ? (
+                  <strong>{v.mascota_nombre || v.clinica_pacientes?.nombre || "Mascota"}</strong>
+                ) : null}
+                {!showGroups ? " · " : null}
+                {v.nombre} · {formatDate(v.fecha)}
+                {esVacunaVencida(v) ? (
+                  <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-800">
+                    Vencida
+                  </span>
+                ) : null}
+                {v.proxima_fecha ? ` · próxima ${formatDate(v.proxima_fecha)}` : ""}
+                {v.origen === "tutor" ? " · cargada por vos" : ""}
+              </li>
+            )}
+          />
         </div>
         <div className={cardClass}>
           <h3 className="font-semibold text-aguara-ink">Desparasitaciones</h3>
-          {data.desparasitaciones.length === 0 ? (
-            <p className="mt-3 text-sm text-stone-500">Sin registros.</p>
-          ) : (
-            <ul className="mt-3 space-y-2 text-sm">
-              {data.desparasitaciones.map((d) => (
-                <li key={d.id}>
-                  <strong>{d.clinica_pacientes?.nombre}</strong> · {d.producto} ·{" "}
-                  {formatDate(d.fecha)}
-                  {d.proxima_fecha ? ` · próxima ${formatDate(d.proxima_fecha)}` : ""}
-                </li>
-              ))}
-            </ul>
-          )}
+          <MascotaGroupedList
+            rows={desparasitaciones}
+            emptyText="Sin registros."
+            showGroups={showGroups}
+            resetKey={mascotaFiltro}
+            renderItem={(d) => (
+              <li key={d.id}>
+                {!showGroups ? (
+                  <strong>{d.mascota_nombre || d.clinica_pacientes?.nombre || "Mascota"}</strong>
+                ) : null}
+                {!showGroups ? " · " : null}
+                {d.producto} · {formatDate(d.fecha)}
+                {d.proxima_fecha ? ` · próxima ${formatDate(d.proxima_fecha)}` : ""}
+              </li>
+            )}
+          />
         </div>
       </div>
 
       <div className={cardClass}>
         <h3 className="font-semibold text-aguara-ink">Estudios y archivos</h3>
-        {data.archivos.length === 0 ? (
-          <p className="mt-3 text-sm text-stone-500">Sin archivos compartidos.</p>
-        ) : (
-          <ul className="mt-3 space-y-2 text-sm">
-            {data.archivos.map((a) => (
-              <li key={a.id}>
-                <a
-                  href={a.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-medium text-aguara-orange hover:underline"
-                >
-                  {a.nombre}
-                </a>{" "}
-                <span className="text-stone-500">
-                  ({a.tipo}) · {a.clinica_pacientes?.nombre} · {formatDateTime(a.creado_en)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+        <MascotaGroupedList
+          rows={archivos}
+          emptyText="Sin archivos compartidos."
+          showGroups={showGroups}
+          resetKey={mascotaFiltro}
+          renderItem={(a) => (
+            <li key={a.id}>
+              <a
+                href={a.url}
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-aguara-orange hover:underline"
+              >
+                {a.nombre}
+              </a>{" "}
+              <span className="text-stone-500">
+                ({a.tipo})
+                {!showGroups
+                  ? ` · ${a.mascota_nombre || a.clinica_pacientes?.nombre || "Mascota"}`
+                  : ""}{" "}
+                · {formatDateTime(a.creado_en)}
+              </span>
+            </li>
+          )}
+        />
       </div>
     </div>
   );

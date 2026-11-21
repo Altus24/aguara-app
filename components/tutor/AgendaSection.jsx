@@ -11,18 +11,25 @@ import {
   primaryBtnClass,
   secondaryBtnClass,
 } from "@/components/tutor/ui";
-import { confirmGuardar } from "@/lib/confirmAction";
-import { etiquetaEstado } from "@/lib/chapitas/clinicaOps";
+import { confirmAccion, confirmGuardar } from "@/lib/confirmAction";
+import { etiquetaEstado, etiquetaEstadoCitaTutor } from "@/lib/chapitas/clinicaOps";
 import {
+  VET_SEGUN_DISPONIBILIDAD,
+  cancelarCitaTutor,
   listarCitasTutor,
   listarClinicasParaTurnos,
   listarHorariosYOcupacion,
   listarMascotasTutorCompletas,
+  listarSlotsSegunDisponibilidad,
   listarVeterinariosParaTurnos,
+  otorgarCompartirHcTutor,
   solicitarTurnoTutor,
+  tutorTienePermisoHcConClinica,
 } from "@/lib/chapitas/tutorPortal";
 
-export default function AgendaSection({ tutor }) {
+const ESTADOS_ACCIONABLES_TUTOR = new Set(["pendiente", "confirmada", "lista_espera"]);
+
+export default function AgendaSection({ tutor, prefill = null, onPrefillConsumed }) {
   const [proximas, setProximas] = useState([]);
   const [pasadas, setPasadas] = useState([]);
   const [mascotas, setMascotas] = useState([]);
@@ -31,8 +38,34 @@ export default function AgendaSection({ tutor }) {
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [prefMascotaId, setPrefMascotaId] = useState(null);
+  const [histExpandido, setHistExpandido] = useState(false);
+  const [accionId, setAccionId] = useState("");
 
   const permiteSolicitar = clinicas.length > 0;
+  const pasadasVisibles = histExpandido ? pasadas : pasadas.slice(0, 1);
+  const pasadasOcultas = Math.max(0, pasadas.length - 1);
+
+  async function handleCancelar(cita) {
+    const cuando = cita.inicio ? formatDateTime(cita.inicio) : "esta cita";
+    if (
+      !(await confirmAccion(
+        `¿Cancelar la cita del ${cuando}? La clínica verá el turno como cancelado.`,
+      ))
+    ) {
+      return;
+    }
+    setAccionId(cita.id);
+    setError("");
+    try {
+      await cancelarCitaTutor(tutor.id, tutor.email, cita.id);
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo cancelar la cita.");
+    } finally {
+      setAccionId("");
+    }
+  }
 
   async function reload() {
     setLoading(true);
@@ -59,27 +92,26 @@ export default function AgendaSection({ tutor }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tutor.id, tutor.email]);
 
+  useEffect(() => {
+    if (!prefill?.openForm && !prefill?.mascotaId) return;
+    if (loading) return;
+    if (!permiteSolicitar || mascotas.length === 0) {
+      onPrefillConsumed?.();
+      return;
+    }
+    setPrefMascotaId(prefill.mascotaId || null);
+    setEditing(null);
+    setShowForm(Boolean(prefill.openForm));
+    onPrefillConsumed?.();
+  }, [prefill, loading, permiteSolicitar, mascotas.length, onPrefillConsumed]);
+
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-aguara-ink">Mis citas</h2>
-          <p className="text-sm text-stone-500">
-            Pedí turno en cualquier clínica del sistema, dentro de sus horarios
-          </p>
-        </div>
-        {permiteSolicitar && mascotas.length > 0 ? (
-          <button
-            type="button"
-            className={primaryBtnClass}
-            onClick={() => {
-              setEditing(null);
-              setShowForm(true);
-            }}
-          >
-            Sacar turno
-          </button>
-        ) : null}
+      <div>
+        <h2 className="text-lg font-semibold text-aguara-ink">Mis citas</h2>
+        <p className="text-sm text-stone-500">
+          Pedí turno en cualquier clínica del sistema, dentro de sus horarios
+        </p>
       </div>
 
       {!permiteSolicitar && !loading ? (
@@ -102,13 +134,16 @@ export default function AgendaSection({ tutor }) {
           mascotas={mascotas}
           clinicas={clinicas}
           initial={editing}
+          preferMascotaId={prefMascotaId}
           onCancel={() => {
             setShowForm(false);
             setEditing(null);
+            setPrefMascotaId(null);
           }}
           onSaved={async () => {
             setShowForm(false);
             setEditing(null);
+            setPrefMascotaId(null);
             await reload();
           }}
         />
@@ -121,83 +156,141 @@ export default function AgendaSection({ tutor }) {
       ) : null}
 
       <div className={cardClass}>
-        <h3 className="font-semibold text-aguara-ink">Próximas citas</h3>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="font-semibold text-aguara-ink">Próximas citas</h3>
+          {permiteSolicitar && mascotas.length > 0 ? (
+            <button
+              type="button"
+              className={`${primaryBtnClass} w-full sm:w-auto`}
+              onClick={() => {
+                setEditing(null);
+                setShowForm(true);
+              }}
+            >
+              Sacar turno
+            </button>
+          ) : null}
+        </div>
         {loading ? (
           <p className="mt-3 text-sm text-stone-500">Cargando…</p>
         ) : proximas.length === 0 ? (
           <p className="mt-3 text-sm text-stone-500">No tenés citas próximas.</p>
         ) : (
           <ul className="mt-3 divide-y divide-stone-100">
-            {proximas.map((cita) => (
-              <li key={cita.id} className="py-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-aguara-ink">
-                      {cita.clinica_pacientes?.nombre || "Mascota"} ·{" "}
-                      {cita.inicio ? formatDateTime(cita.inicio) : "A coordinar"}
-                    </p>
-                    <p className="text-sm text-stone-500">
-                      {cita.clinicas?.nombre || "Clínica"}
-                      {cita.clinicas?.ciudad ? ` · ${cita.clinicas.ciudad}` : ""}
-                      {cita.clinica_veterinarios?.nombre
-                        ? ` · ${cita.clinica_veterinarios.nombre}`
-                        : ""}
-                      {cita.motivo ? ` · ${cita.motivo}` : ""}
-                    </p>
-                    {cita.estado === "pendiente" ? (
-                      <p className="mt-1 text-xs text-amber-700">
-                        Esperando confirmación de la clínica
+            {proximas.map((cita) => {
+              const accionable = ESTADOS_ACCIONABLES_TUTOR.has(cita.estado);
+              return (
+                <li key={cita.id} className="py-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-aguara-ink">
+                        {cita.clinica_pacientes?.nombre || "Mascota"} ·{" "}
+                        {cita.inicio ? formatDateTime(cita.inicio) : "A coordinar"}
                       </p>
-                    ) : null}
+                      <p className="text-sm text-stone-500">
+                        {cita.clinicas?.nombre || "Clínica"}
+                        {cita.clinicas?.ciudad ? ` · ${cita.clinicas.ciudad}` : ""}
+                        {cita.clinica_veterinarios?.nombre
+                          ? ` · ${cita.clinica_veterinarios.nombre}`
+                          : ""}
+                        {cita.motivo ? ` · ${cita.motivo}` : ""}
+                      </p>
+                      {cita.estado === "pendiente" ? (
+                        <p className="mt-1 text-xs text-amber-700">
+                          A confirmar por la clínica
+                        </p>
+                      ) : null}
+                    </div>
+                    <EstadoBadge estado={cita.estado} label={etiquetaEstado(cita.estado)} />
                   </div>
-                  <EstadoBadge estado={cita.estado} label={etiquetaEstado(cita.estado)} />
-                </div>
-                {permiteSolicitar &&
-                ["pendiente", "confirmada", "lista_espera"].includes(cita.estado) ? (
-                  <button
-                    type="button"
-                    className="mt-2 text-sm text-aguara-orange underline"
-                    onClick={() => {
-                      setEditing(cita);
-                      setShowForm(true);
-                    }}
-                  >
-                    Reprogramar
-                  </button>
-                ) : null}
-              </li>
-            ))}
+                  {accionable ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className={secondaryBtnClass}
+                        disabled={Boolean(accionId) || !permiteSolicitar}
+                        onClick={() => {
+                          setEditing(cita);
+                          setShowForm(true);
+                          requestAnimationFrame(() => {
+                            window.scrollTo({ top: 0, behavior: "smooth" });
+                          });
+                        }}
+                      >
+                        Reprogramar
+                      </button>
+                      <button
+                        type="button"
+                        className={secondaryBtnClass}
+                        disabled={Boolean(accionId)}
+                        onClick={() => handleCancelar(cita)}
+                      >
+                        {accionId === cita.id ? "…" : "Cancelar"}
+                      </button>
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
 
       <div className={cardClass}>
         <h3 className="font-semibold text-aguara-ink">Historial de citas</h3>
+        <p className="mt-1 text-sm text-stone-500">
+          El resultado (Realizada / No asistió / Cancelada) lo define la clínica.
+        </p>
         {loading ? (
           <p className="mt-3 text-sm text-stone-500">Cargando…</p>
         ) : pasadas.length === 0 ? (
           <p className="mt-3 text-sm text-stone-500">Sin citas pasadas.</p>
         ) : (
-          <ul className="mt-3 divide-y divide-stone-100">
-            {pasadas.map((cita) => (
-              <li key={cita.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                <div>
-                  <p className="font-medium text-aguara-ink">
-                    {cita.clinica_pacientes?.nombre || "Mascota"} ·{" "}
-                    {cita.inicio ? formatDateTime(cita.inicio) : "—"}
-                  </p>
-                  <p className="text-sm text-stone-500">
-                    {cita.clinicas?.nombre || "Clínica"}
-                    {cita.clinica_veterinarios?.nombre
-                      ? ` · ${cita.clinica_veterinarios.nombre}`
-                      : ""}
-                    {cita.motivo ? ` · ${cita.motivo}` : ""}
-                  </p>
-                </div>
-                <EstadoBadge estado={cita.estado} label={etiquetaEstado(cita.estado)} />
-              </li>
-            ))}
-          </ul>
+          <div className="mt-3">
+            <ul className="divide-y divide-stone-100">
+              {pasadasVisibles.map((cita) => {
+                const label = etiquetaEstadoCitaTutor(cita);
+                const badgeEstado =
+                  label === "Por confirmar asistencia"
+                    ? "pendiente"
+                    : cita.estado === "finalizada"
+                      ? "finalizada"
+                      : cita.estado;
+                return (
+                  <li
+                    key={cita.id}
+                    className="flex flex-wrap items-center justify-between gap-3 py-3"
+                  >
+                    <div>
+                      <p className="font-medium text-aguara-ink">
+                        {cita.clinica_pacientes?.nombre || "Mascota"} ·{" "}
+                        {cita.inicio ? formatDateTime(cita.inicio) : "—"}
+                      </p>
+                      <p className="text-sm text-stone-500">
+                        {cita.clinicas?.nombre || "Clínica"}
+                        {cita.clinica_veterinarios?.nombre
+                          ? ` · ${cita.clinica_veterinarios.nombre}`
+                          : ""}
+                        {cita.motivo ? ` · ${cita.motivo}` : ""}
+                      </p>
+                    </div>
+                    <EstadoBadge estado={badgeEstado} label={label} />
+                  </li>
+                );
+              })}
+            </ul>
+            {pasadasOcultas > 0 ? (
+              <button
+                type="button"
+                className="mt-2 text-sm font-medium text-aguara-orange hover:underline"
+                onClick={() => setHistExpandido((v) => !v)}
+              >
+                {histExpandido
+                  ? "Ver menos"
+                  : `Ver más (${pasadasOcultas} anterior${pasadasOcultas === 1 ? "" : "es"})`}
+              </button>
+            ) : null}
+          </div>
         )}
       </div>
     </div>
@@ -217,7 +310,7 @@ function toTimeLabel(iso) {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-function CitaForm({ tutor, mascotas, clinicas, initial, onCancel, onSaved }) {
+function CitaForm({ tutor, mascotas, clinicas, initial, preferMascotaId, onCancel, onSaved }) {
   const defaultClinica = tutor.clinica_preferida_id || clinicas[0]?.id || "";
   const [form, setForm] = useState({
     clinica_id: initial?.clinica_id || defaultClinica,
@@ -234,20 +327,80 @@ function CitaForm({ tutor, mascotas, clinicas, initial, onCancel, onSaved }) {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [compartirHc, setCompartirHc] = useState(true);
+  const [yaTienePermisoHc, setYaTienePermisoHc] = useState(false);
+  const [checkingPermisoHc, setCheckingPermisoHc] = useState(false);
 
   const clinicaSeleccionada = useMemo(
     () => clinicas.find((c) => c.id === form.clinica_id),
     [clinicas, form.clinica_id],
   );
 
+  const mascotaSeleccionada = useMemo(
+    () => mascotas.find((m) => m.key === form.paciente_key) || null,
+    [mascotas, form.paciente_key],
+  );
+
+  const mostrarCheckHc =
+    !initial?.id && Boolean(form.clinica_id) && Boolean(mascotaSeleccionada?.chapita_id);
+
   useEffect(() => {
     if (initial?.paciente_id) {
       const m = mascotas.find((x) => x.paciente_clinico_id === initial.paciente_id);
-      if (m) setForm((f) => ({ ...f, paciente_key: m.key }));
+      if (m) {
+        setForm((f) => ({
+          ...f,
+          paciente_key: m.key,
+          clinica_id:
+            initial?.clinica_id ||
+            m.clinica_cabecera_id ||
+            f.clinica_id ||
+            defaultClinica,
+        }));
+      }
+    } else if (preferMascotaId) {
+      const m = mascotas.find((x) => x.chapita_id === preferMascotaId);
+      if (m) {
+        setForm((f) => ({
+          ...f,
+          paciente_key: m.key,
+          clinica_id: f.clinica_id || m.clinica_cabecera_id || defaultClinica,
+        }));
+      }
     } else if (mascotas.length === 1) {
-      setForm((f) => ({ ...f, paciente_key: mascotas[0].key }));
+      const m = mascotas[0];
+      setForm((f) => ({
+        ...f,
+        paciente_key: m.key,
+        clinica_id: f.clinica_id || m.clinica_cabecera_id || defaultClinica,
+      }));
     }
-  }, [initial, mascotas]);
+  }, [initial, mascotas, defaultClinica, preferMascotaId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function checkPermiso() {
+      if (initial?.id || !form.clinica_id || !tutor?.id) {
+        setYaTienePermisoHc(false);
+        return;
+      }
+      setCheckingPermisoHc(true);
+      try {
+        const ok = await tutorTienePermisoHcConClinica(tutor.id, form.clinica_id);
+        if (cancelled) return;
+        setYaTienePermisoHc(ok);
+        if (!ok) setCompartirHc(true);
+      } catch {
+        if (!cancelled) setYaTienePermisoHc(false);
+      } finally {
+        if (!cancelled) setCheckingPermisoHc(false);
+      }
+    }
+    checkPermiso();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.clinica_id, tutor?.id, initial?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -262,8 +415,14 @@ function CitaForm({ tutor, mascotas, clinicas, initial, onCancel, onSaved }) {
         if (cancelled) return;
         setVets(rows);
         setForm((f) => {
+          if (f.veterinario_id === VET_SEGUN_DISPONIBILIDAD) return f;
           if (f.veterinario_id && rows.some((v) => v.id === f.veterinario_id)) return f;
-          return { ...f, veterinario_id: rows[0]?.id || "", hora: "" };
+          // Por defecto: según disponibilidad (si hay vets)
+          return {
+            ...f,
+            veterinario_id: rows.length ? VET_SEGUN_DISPONIBILIDAD : "",
+            hora: "",
+          };
         });
       } catch (err) {
         if (!cancelled) {
@@ -280,6 +439,8 @@ function CitaForm({ tutor, mascotas, clinicas, initial, onCancel, onSaved }) {
     };
   }, [form.clinica_id]);
 
+  const segunDisponibilidad = form.veterinario_id === VET_SEGUN_DISPONIBILIDAD;
+
   useEffect(() => {
     let cancelled = false;
     async function loadSlots() {
@@ -290,18 +451,26 @@ function CitaForm({ tutor, mascotas, clinicas, initial, onCancel, onSaved }) {
       setLoadingSlots(true);
       setError("");
       try {
-        const data = await listarHorariosYOcupacion(
-          form.clinica_id,
-          form.fecha,
-          form.veterinario_id,
-        );
+        let available = [];
+        if (form.veterinario_id === VET_SEGUN_DISPONIBILIDAD) {
+          const data = await listarSlotsSegunDisponibilidad(form.clinica_id, form.fecha);
+          available = [...data.slots];
+        } else {
+          const data = await listarHorariosYOcupacion(
+            form.clinica_id,
+            form.fecha,
+            form.veterinario_id,
+          );
+          available = [...data.slots];
+        }
         if (cancelled) return;
-        const available = [...data.slots];
         if (
           initial?.id &&
           initial.inicio &&
           toDateInput(initial.inicio) === form.fecha &&
-          (!initial.veterinario_id || initial.veterinario_id === form.veterinario_id)
+          (form.veterinario_id === VET_SEGUN_DISPONIBILIDAD ||
+            !initial.veterinario_id ||
+            initial.veterinario_id === form.veterinario_id)
         ) {
           const own = toTimeLabel(initial.inicio);
           if (own && !available.includes(own)) available.push(own);
@@ -317,7 +486,7 @@ function CitaForm({ tutor, mascotas, clinicas, initial, onCancel, onSaved }) {
           setError(
             err instanceof Error
               ? err.message
-              : "No se pudieron cargar los horarios de ese veterinario.",
+              : "No se pudieron cargar los horarios disponibles.",
           );
         }
       } finally {
@@ -341,10 +510,27 @@ function CitaForm({ tutor, mascotas, clinicas, initial, onCancel, onSaved }) {
     try {
       const mascota = mascotas.find((m) => m.key === form.paciente_key);
       if (!mascota) throw new Error("Elegí una mascota.");
+      const segunDisp = form.veterinario_id === VET_SEGUN_DISPONIBILIDAD;
+
+      if (
+        !initial?.id &&
+        compartirHc &&
+        !yaTienePermisoHc &&
+        mascota.chapita_id
+      ) {
+        await otorgarCompartirHcTutor({
+          tutorId: tutor.id,
+          clinicaId: form.clinica_id,
+          mascotaId: mascota.chapita_id,
+          mensaje: "Autorizado al sacar turno",
+        });
+      }
+
       await solicitarTurnoTutor({
         tutor,
         clinicaId: form.clinica_id,
-        veterinarioId: form.veterinario_id,
+        veterinarioId: segunDisp ? null : form.veterinario_id,
+        segunDisponibilidad: segunDisp,
         mascota,
         fecha: form.fecha,
         hora: form.hora,
@@ -366,7 +552,7 @@ function CitaForm({ tutor, mascotas, clinicas, initial, onCancel, onSaved }) {
         {initial?.id ? "Reprogramar turno" : "Sacar turno"}
       </h3>
       <p className="text-sm text-stone-500">
-        Elegí veterinario y un horario de su agenda. La clínica deberá confirmarlo.
+        Podés elegir un veterinario o “Según disponibilidad”. La clínica deberá confirmar el turno.
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Clínica" id="t-cita-cli">
@@ -414,6 +600,9 @@ function CitaForm({ tutor, mascotas, clinicas, initial, onCancel, onSaved }) {
                     ? "Seleccionar…"
                     : "Sin veterinarios"}
             </option>
+            {vets.length > 0 ? (
+              <option value={VET_SEGUN_DISPONIBILIDAD}>Según disponibilidad</option>
+            ) : null}
             {vets.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.nombre}
@@ -428,7 +617,19 @@ function CitaForm({ tutor, mascotas, clinicas, initial, onCancel, onSaved }) {
             required
             className={fieldClass}
             value={form.paciente_key}
-            onChange={(e) => setForm((f) => ({ ...f, paciente_key: e.target.value }))}
+            onChange={(e) => {
+              const key = e.target.value;
+              const m = mascotas.find((x) => x.key === key);
+              setForm((f) => ({
+                ...f,
+                paciente_key: key,
+                clinica_id:
+                  m?.clinica_cabecera_id &&
+                  clinicas.some((c) => c.id === m.clinica_cabecera_id)
+                    ? m.clinica_cabecera_id
+                    : f.clinica_id,
+              }));
+            }}
           >
             <option value="">Seleccionar…</option>
             {mascotas.map((m) => (
@@ -467,7 +668,9 @@ function CitaForm({ tutor, mascotas, clinicas, initial, onCancel, onSaved }) {
                     ? "Elegí una fecha"
                     : slots.length
                       ? "Seleccionar…"
-                      : "Sin horarios ese día para este veterinario"}
+                      : segunDisponibilidad
+                        ? "Sin horarios libres ese día"
+                        : "Sin horarios ese día para este veterinario"}
             </option>
             {slots.map((slot) => (
               <option key={slot} value={slot}>
@@ -475,6 +678,12 @@ function CitaForm({ tutor, mascotas, clinicas, initial, onCancel, onSaved }) {
               </option>
             ))}
           </select>
+          {segunDisponibilidad && form.fecha ? (
+            <p className="mt-1 text-xs text-stone-500">
+              Se muestran horarios libres de cualquier veterinario. Al enviar, se asigna uno
+              disponible en ese horario.
+            </p>
+          ) : null}
         </Field>
         <Field label="Motivo" id="t-cita-mot" className="sm:col-span-2">
           <input
@@ -501,6 +710,37 @@ function CitaForm({ tutor, mascotas, clinicas, initial, onCancel, onSaved }) {
           onChange={(e) => setForm((f) => ({ ...f, notas: e.target.value }))}
         />
       </Field>
+
+      {mostrarCheckHc && !yaTienePermisoHc ? (
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-aguara-orange/30 bg-aguara-cream/40 p-3 text-sm text-aguara-ink">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={compartirHc}
+            disabled={checkingPermisoHc || saving}
+            onChange={(e) => setCompartirHc(e.target.checked)}
+          />
+          <span>
+            <span className="font-medium">
+              Compartir el historial clínico de{" "}
+              {mascotaSeleccionada?.nombre || "la mascota"} con esta clínica para la
+              consulta
+            </span>
+            <span className="mt-0.5 block text-xs text-stone-600">
+              Así la clínica puede ver antecedentes de otras atenciones. Podés quitar el
+              permiso después en la pestaña Permisos.
+            </span>
+          </span>
+        </label>
+      ) : null}
+
+      {mostrarCheckHc && yaTienePermisoHc ? (
+        <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+          Esta clínica ya tiene permiso para ver el historial clínico de{" "}
+          {mascotaSeleccionada?.nombre || "tu mascota"}.
+        </p>
+      ) : null}
+
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       <div className="flex gap-2">
         <button type="submit" disabled={saving || loadingSlots || loadingVets} className={primaryBtnClass}>

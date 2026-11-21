@@ -6,15 +6,16 @@ import CitaForm from "@/components/clinica/CitaForm";
 import {
   cardClass,
   EstadoBadge,
+  formatDate,
   formatDateTime,
   primaryBtnClass,
   secondaryBtnClass,
 } from "@/components/clinica/ui";
 import {
-  CITA_ESTADOS,
   addDaysISO,
   cambiarEstadoCita,
   endOfDayISO,
+  esCitaPasada,
   etiquetaEstado,
   listarCitasPendientes,
   listarCitasRango,
@@ -138,11 +139,7 @@ export default function AgendaSection({
   const weekLabel = useMemo(() => {
     const from = days[0];
     const to = days[6];
-    const opts = { day: "2-digit", month: "short" };
-    return `${from.toLocaleDateString("es-AR", opts)} – ${to.toLocaleDateString("es-AR", {
-      ...opts,
-      year: "numeric",
-    })}`;
+    return `${formatDate(from)} – ${formatDate(to)}`;
   }, [days]);
 
   const horariosFiltrados = useMemo(() => {
@@ -243,7 +240,7 @@ export default function AgendaSection({
       try {
         const pend = await listarCitasPendientes(clinicaId);
         if (cancelled) return;
-        const first = pend.find((c) => c.inicio) || pend[0];
+        const first = pend.find((c) => c.inicio) || pend[0] || null;
         if (first?.inicio) {
           const target = startOfWeekMonday(new Date(first.inicio));
           setWeekStart(target);
@@ -251,7 +248,14 @@ export default function AgendaSection({
         } else {
           await reload(weekStart, vetId);
         }
-        setSelectedCita(first || null);
+        if (cancelled) return;
+        setSelectedCita(first);
+        requestAnimationFrame(() => {
+          document.getElementById("cita-seleccionada")?.scrollIntoView({
+            behavior: "smooth",
+            block: "nearest",
+          });
+        });
       } catch {
         /* ignore */
       } finally {
@@ -278,6 +282,36 @@ export default function AgendaSection({
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cambiar el estado.");
     }
+  }
+
+  function selectCita(cita) {
+    setSelectedCita(cita);
+    if (cita?.inicio) {
+      const monday = startOfWeekMonday(new Date(cita.inicio));
+      if (toDateKey(monday) !== toDateKey(weekStart)) {
+        setWeekStart(monday);
+        reload(monday, vetId);
+      }
+    }
+    requestAnimationFrame(() => {
+      document.getElementById("cita-seleccionada")?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    });
+  }
+
+  function openReprogramar(cita) {
+    setSelectedCita(cita);
+    setEditing(cita);
+    setDefaultDay(cita?.inicio ? new Date(cita.inicio) : new Date());
+    setShowForm(true);
+    requestAnimationFrame(() => {
+      document.getElementById("agenda-cita-form")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
   }
 
   function openNewAt(day, timeLabel) {
@@ -396,14 +430,7 @@ export default function AgendaSection({
                 <button
                   type="button"
                   className="text-left text-sm text-yellow-950"
-                  onClick={() => {
-                    if (cita.inicio) {
-                      const monday = startOfWeekMonday(new Date(cita.inicio));
-                      setWeekStart(monday);
-                      reload(monday, vetId);
-                    }
-                    setSelectedCita(cita);
-                  }}
+                  onClick={() => selectCita(cita)}
                 >
                   <span className="font-medium">
                     {cita.clinica_pacientes?.nombre || "Paciente"} ·{" "}
@@ -416,7 +443,7 @@ export default function AgendaSection({
                       : ""}
                   </span>
                 </button>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     className="rounded-full bg-orange-500 px-3 py-1 text-xs font-medium text-white"
@@ -426,10 +453,17 @@ export default function AgendaSection({
                   </button>
                   <button
                     type="button"
+                    className="rounded-full border border-aguara-orange/40 bg-white px-3 py-1 text-xs font-medium text-aguara-orange"
+                    onClick={() => openReprogramar(cita)}
+                  >
+                    Reprogramar
+                  </button>
+                  <button
+                    type="button"
                     className="rounded-full border border-stone-300 bg-white px-3 py-1 text-xs text-stone-600"
                     onClick={() => onEstado(cita.id, "cancelada")}
                   >
-                    Rechazar
+                    Cancelar
                   </button>
                 </div>
               </li>
@@ -437,6 +471,100 @@ export default function AgendaSection({
           </ul>
         </div>
       ) : null}
+
+      {selectedCita ? (
+        <div id="cita-seleccionada" className={`${cardClass} border-aguara-orange/30`}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-aguara-orange">
+                Cita seleccionada
+              </p>
+              <p className="mt-1 font-semibold text-aguara-ink">
+                {selectedCita.clinica_pacientes?.nombre || "Sin paciente"} ·{" "}
+                {selectedCita.inicio ? formatDateTime(selectedCita.inicio) : "Sin horario"}
+              </p>
+              <p className="mt-1 text-sm text-stone-500">
+                {selectedCita.clinica_veterinarios?.nombre || "Sin vet"} ·{" "}
+                {selectedCita.clinica_clientes?.nombre_completo || "—"}
+                {selectedCita.motivo ? ` · ${selectedCita.motivo}` : ""}
+              </p>
+            </div>
+            <EstadoBadge
+              estado={selectedCita.estado}
+              label={etiquetaEstado(selectedCita.estado)}
+            />
+          </div>
+          {esCitaPasada(selectedCita) &&
+          !["finalizada", "no_asistio", "cancelada"].includes(selectedCita.estado) ? (
+            <p className="mt-2 text-sm text-amber-800">
+              El horario ya pasó. Marcá <strong>Realizada</strong> o <strong>No asistió</strong>{" "}
+              (o Cancelada) para que el tutor lo vea bien en su historial.
+            </p>
+          ) : null}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {selectedCita.estado === "pendiente" ? (
+              <button
+                type="button"
+                className="rounded-full bg-orange-500 px-3 py-1.5 text-xs font-medium text-white"
+                onClick={() => onEstado(selectedCita.id, "confirmada")}
+              >
+                Confirmar
+              </button>
+            ) : null}
+            {["pendiente", "confirmada", "en_espera", "en_atencion", "lista_espera"].includes(
+              selectedCita.estado,
+            ) ? (
+              <>
+                <button
+                  type="button"
+                  className="rounded-full border border-aguara-orange/40 bg-white px-3 py-1.5 text-xs font-medium text-aguara-orange"
+                  onClick={() => openReprogramar(selectedCita)}
+                >
+                  Reprogramar
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-700"
+                  onClick={() => onEstado(selectedCita.id, "cancelada")}
+                >
+                  Cancelar
+                </button>
+              </>
+            ) : null}
+            {esCitaPasada(selectedCita) &&
+            !["finalizada", "no_asistio", "cancelada"].includes(selectedCita.estado) ? (
+              <>
+                <button
+                  type="button"
+                  className="rounded-full border border-stone-200 px-3 py-1.5 text-xs text-stone-700"
+                  onClick={() => onEstado(selectedCita.id, "finalizada")}
+                >
+                  Realizada
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full border border-stone-200 px-3 py-1.5 text-xs text-stone-700"
+                  onClick={() => onEstado(selectedCita.id, "no_asistio")}
+                >
+                  No asistió
+                </button>
+              </>
+            ) : null}
+            <button
+              type="button"
+              className="rounded-full border border-stone-200 px-2.5 py-1 text-xs text-stone-500"
+              onClick={() => setSelectedCita(null)}
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm text-stone-500">
+          Tocá un turno en el calendario o en la lista de pendientes para Confirmar, Cancelar o
+          Reprogramar.
+        </p>
+      )}
 
       {showForm ? (
         <div id="agenda-cita-form">
@@ -456,6 +584,7 @@ export default function AgendaSection({
             onSaved={async () => {
               setShowForm(false);
               setEditing(null);
+              setSelectedCita(null);
               await reload();
             }}
           />
@@ -494,12 +623,12 @@ export default function AgendaSection({
                   }`}
                 >
                   <p className="text-[11px] uppercase tracking-wide text-stone-500">
-                    {day.toLocaleDateString("es-AR", { weekday: "short" })}
+                    {["dom", "lun", "mar", "mié", "jue", "vie", "sáb"][day.getDay()]}
                   </p>
                   <p
                     className={`text-sm font-semibold ${isToday ? "text-aguara-orange" : "text-aguara-ink"}`}
                   >
-                    {day.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })}
+                    {formatDate(day).slice(0, 5)}
                   </p>
                 </div>
               );
@@ -533,7 +662,7 @@ export default function AgendaSection({
                           <button
                             key={cita.id}
                             type="button"
-                            onClick={() => setSelectedCita(cita)}
+                            onClick={() => selectCita(cita)}
                             className={`absolute inset-0.5 z-[1] overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-[10px] leading-tight ${slotTone(
                               cita.estado,
                             )} ${selectedCita?.id === cita.id ? "ring-2 ring-aguara-orange" : ""}`}
@@ -576,70 +705,6 @@ export default function AgendaSection({
           </div>
         </div>
       </div>
-
-      {selectedCita ? (
-        <div className={`${cardClass} border-aguara-orange/30`}>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="font-semibold text-aguara-ink">
-                {selectedCita.clinica_pacientes?.nombre || "Sin paciente"} ·{" "}
-                {selectedCita.inicio ? formatDateTime(selectedCita.inicio) : "Sin horario"}
-              </p>
-              <p className="mt-1 text-sm text-stone-500">
-                {selectedCita.clinica_veterinarios?.nombre || "Sin vet"} ·{" "}
-                {selectedCita.clinica_clientes?.nombre_completo || "—"}
-                {selectedCita.motivo ? ` · ${selectedCita.motivo}` : ""}
-              </p>
-            </div>
-            <EstadoBadge
-              estado={selectedCita.estado}
-              label={etiquetaEstado(selectedCita.estado)}
-            />
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {selectedCita.estado === "pendiente" ? (
-              <button
-                type="button"
-                className="rounded-full bg-orange-500 px-3 py-1.5 text-xs font-medium text-white"
-                onClick={() => onEstado(selectedCita.id, "confirmada")}
-              >
-                Confirmar
-              </button>
-            ) : null}
-            {CITA_ESTADOS.filter((e) => e.id !== "lista_espera").map((estado) => (
-              <button
-                key={estado.id}
-                type="button"
-                disabled={selectedCita.estado === estado.id}
-                onClick={() => onEstado(selectedCita.id, estado.id)}
-                className="rounded-full border border-stone-200 px-2.5 py-1 text-xs text-stone-600 hover:border-aguara-orange hover:text-aguara-orange disabled:opacity-40"
-              >
-                {estado.label}
-              </button>
-            ))}
-            <button
-              type="button"
-              className="rounded-full border border-stone-200 px-2.5 py-1 text-xs text-stone-600 hover:border-aguara-orange"
-              onClick={() => {
-                setEditing(selectedCita);
-                setDefaultDay(
-                  selectedCita.inicio ? new Date(selectedCita.inicio) : new Date(),
-                );
-                setShowForm(true);
-              }}
-            >
-              Reprogramar
-            </button>
-            <button
-              type="button"
-              className="rounded-full border border-stone-200 px-2.5 py-1 text-xs text-stone-500"
-              onClick={() => setSelectedCita(null)}
-            >
-              Cerrar
-            </button>
-          </div>
-        </div>
-      ) : null}
 
       <div className={cardClass}>
         <div className="flex items-center justify-between gap-2">

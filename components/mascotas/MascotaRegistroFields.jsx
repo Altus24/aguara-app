@@ -23,6 +23,7 @@ export const EMPTY_PET_FORM = {
   enfermedad: "",
   medicacion: "",
   datos_adicionales: "",
+  clinica_cabecera_id: "",
 };
 
 const defaultFieldClass =
@@ -40,6 +41,7 @@ export default function MascotaRegistroFields({
   fieldClass = defaultFieldClass,
   showTitle = true,
   nombreKey = "nombre_mascota",
+  clinicas = null,
 }) {
   function set(name, value) {
     onChange(name, value);
@@ -150,6 +152,7 @@ export default function MascotaRegistroFields({
             <option value="">Elegí una opción</option>
             <option value="si">Sí</option>
             <option value="no">No</option>
+            <option value="ns">No lo sé</option>
           </select>
         </div>
       </div>
@@ -218,6 +221,35 @@ export default function MascotaRegistroFields({
           className={fieldClass}
         />
       </div>
+
+      {Array.isArray(clinicas) ? (
+        <div>
+          <label
+            htmlFor={`${fotoInputId}-clinica_cabecera`}
+            className="mb-1 block text-sm font-medium text-gray-700"
+          >
+            Clínica de cabecera{" "}
+            <span className="font-normal text-stone-500">(opcional)</span>
+          </label>
+          <select
+            id={`${fotoInputId}-clinica_cabecera`}
+            value={form.clinica_cabecera_id || ""}
+            onChange={(e) => set("clinica_cabecera_id", e.target.value)}
+            className={fieldClass}
+          >
+            <option value="">Sin clínica de cabecera</option>
+            {clinicas.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre}
+                {c.ciudad ? ` · ${c.ciudad}` : ""}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-stone-500">
+            Preferida para turnos y seguimiento de esta mascota.
+          </p>
+        </div>
+      ) : null}
 
       <div>
         <label htmlFor={`${fotoInputId}-enfermedad`} className="mb-1 block text-sm font-medium text-gray-700">

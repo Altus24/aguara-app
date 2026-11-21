@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import CitaForm from "@/components/clinica/CitaForm";
 import {
   cardClass,
   fieldClass,
@@ -9,10 +10,15 @@ import {
   secondaryBtnClass,
 } from "@/components/clinica/ui";
 import {
+  listarClientes,
   listarDirectorioTutores,
+  listarVeterinarios,
+  obtenerPaciente,
   obtenerPerfilTutorCompartido,
   solicitarCompartirPerfilTutor,
 } from "@/lib/chapitas/clinicaOps";
+import { listarServiciosActivos } from "@/lib/chapitas/clinicas";
+import { sincronizarMascotaCompartidaEnClinica } from "@/lib/chapitas/tutorPortal";
 
 export default function TutoresDirectorySection({ clinicaId, clinicaNombre }) {
   const [items, setItems] = useState([]);
@@ -22,6 +28,7 @@ export default function TutoresDirectorySection({ clinicaId, clinicaNombre }) {
   const [message, setMessage] = useState("");
   const [busyId, setBusyId] = useState("");
   const [perfil, setPerfil] = useState(null);
+  const [citaCtx, setCitaCtx] = useState(null);
 
   async function reload() {
     setLoading(true);
@@ -69,11 +76,46 @@ export default function TutoresDirectorySection({ clinicaId, clinicaNombre }) {
   async function verPerfilCompartido(tutor) {
     setBusyId(tutor.id);
     setError("");
+    setCitaCtx(null);
     try {
       setPerfil(await obtenerPerfilTutorCompartido(clinicaId, tutor.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo abrir el perfil.");
       setPerfil(null);
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  async function sacarTurnoMascota(mascota) {
+    if (!perfil?.tutor?.id) return;
+    setBusyId(mascota.id);
+    setError("");
+    setMessage("");
+    setCitaCtx(null);
+    try {
+      const created = await sincronizarMascotaCompartidaEnClinica({
+        clinicaId,
+        tutorId: perfil.tutor.id,
+        mascotaId: mascota.id,
+      });
+      if (!created?.id) throw new Error("No se pudo vincular la mascota como paciente.");
+      const [paciente, clientes, vets, servicios] = await Promise.all([
+        obtenerPaciente(created.id),
+        listarClientes(clinicaId),
+        listarVeterinarios(clinicaId),
+        listarServiciosActivos(clinicaId),
+      ]);
+      setCitaCtx({
+        mascotaId: mascota.id,
+        paciente,
+        clientes,
+        vets: (vets || []).filter((v) => v.activo !== false),
+        servicios: servicios || [],
+      });
+      setPerfil(await obtenerPerfilTutorCompartido(clinicaId, perfil.tutor.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo abrir el turno.");
     } finally {
       setBusyId("");
     }
@@ -88,18 +130,6 @@ export default function TutoresDirectorySection({ clinicaId, clinicaNombre }) {
           las mascotas que piden turno. Si necesitás más datos de otra mascota, pedí acceso: el
           tutor debe aceptar.
         </p>
-      </div>
-
-      <div className="flex gap-2">
-        <input
-          className={fieldClass}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar por tutor o mascota"
-        />
-        <button type="button" className={secondaryBtnClass} onClick={reload}>
-          Actualizar
-        </button>
       </div>
 
       {error ? (
@@ -118,8 +148,15 @@ export default function TutoresDirectorySection({ clinicaId, clinicaNombre }) {
                 {perfil.tutor.nombre_completo}
               </h3>
             </div>
-            <button type="button" className={secondaryBtnClass} onClick={() => setPerfil(null)}>
-              Cerrar
+            <button
+              type="button"
+              className={secondaryBtnClass}
+              onClick={() => {
+                setPerfil(null);
+                setCitaCtx(null);
+              }}
+            >
+              Volver al listado
             </button>
           </div>
           <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
@@ -154,100 +191,175 @@ export default function TutoresDirectorySection({ clinicaId, clinicaNombre }) {
                       : "rounded-xl border border-stone-200 bg-stone-50 px-3 py-2"
                   }
                 >
-                  <strong>{m.nombre_mascota}</strong>
-                  {m.acceso === "completo" ? (
-                    <>
-                      {m.especie ? ` · ${m.especie}` : ""}
-                      {m.raza ? ` · ${m.raza}` : ""}
-                      {m.sexo ? ` · ${m.sexo}` : ""}
-                      <span className="mt-1 block text-xs text-emerald-800">
-                        Ficha visible (turno / autorizada)
-                      </span>
-                    </>
-                  ) : (
-                    <span className="mt-1 block text-xs text-stone-500">
-                      Solo nombre · pedí acceso para ver el resto
-                    </span>
-                  )}
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <strong>{m.nombre_mascota}</strong>
+                      {m.acceso === "completo" ? (
+                        <>
+                          {m.especie ? ` · ${m.especie}` : ""}
+                          {m.raza ? ` · ${m.raza}` : ""}
+                          {m.sexo ? ` · ${m.sexo}` : ""}
+                          <span className="mt-1 block text-xs text-emerald-800">
+                            Ficha visible (turno / autorizada)
+                          </span>
+                        </>
+                      ) : (
+                        <span className="mt-1 block text-xs text-stone-500">
+                          Solo nombre · pedí acceso para ver el resto
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className={primaryBtnClass}
+                      disabled={Boolean(busyId)}
+                      onClick={() => sacarTurnoMascota(m)}
+                    >
+                      {busyId === m.id ? "…" : "Sacar turno"}
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
           )}
-        </div>
-      ) : null}
 
-      <div className={cardClass}>
-        {loading ? (
-          <p className="text-sm text-stone-500">Cargando…</p>
-        ) : filtered.length === 0 ? (
-          <p className="text-sm text-stone-500">No hay tutores para mostrar.</p>
-        ) : (
-          <ul className="divide-y divide-stone-100">
-            {filtered.map((t) => {
-              const estado = t.compartir?.estado;
-              return (
-                <li
-                  key={t.id}
-                  className="flex flex-wrap items-start justify-between gap-3 py-3"
-                >
-                  <div>
-                    <p className="font-medium text-aguara-ink">{t.nombre_completo}</p>
-                    <p className="text-sm text-stone-500">
-                      {t.mascotas.length === 0
-                        ? "Sin mascotas registradas"
-                        : t.mascotas.map((m) => m.nombre).join(" · ")}
-                    </p>
-                    {estado === "pendiente" ? (
-                      <p className="mt-1 text-xs text-amber-700">Solicitud pendiente de aceptación</p>
-                    ) : null}
-                    {estado === "aceptada" ? (
-                      <p className="mt-1 text-xs text-emerald-700">Perfil compartido</p>
-                    ) : null}
-                    {estado === "rechazada" ? (
-                      <p className="mt-1 text-xs text-stone-500">Solicitud rechazada</p>
-                    ) : null}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {estado === "aceptada" ? (
-                      <>
-                        <button
-                          type="button"
-                          className={primaryBtnClass}
-                          disabled={busyId === t.id}
-                          onClick={() => verPerfilCompartido(t)}
-                        >
-                          Ver perfil
-                        </button>
-                        <button
-                          type="button"
-                          className={secondaryBtnClass}
-                          disabled={busyId === t.id}
-                          onClick={() => pedirAcceso(t)}
-                        >
-                          Pedir otra mascota
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        className={secondaryBtnClass}
-                        disabled={busyId === t.id || estado === "pendiente"}
-                        onClick={() => pedirAcceso(t)}
-                      >
-                        {estado === "pendiente"
-                          ? "Pendiente…"
-                          : estado === "rechazada"
-                            ? "Volver a solicitar"
-                            : "Pedir acceso"}
-                      </button>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+          {citaCtx ? (
+            <div className="mt-4 space-y-2">
+              <p className="text-sm font-medium text-aguara-ink">
+                Nuevo turno · {citaCtx.paciente?.nombre || "Mascota"}
+              </p>
+              <CitaForm
+                key={citaCtx.paciente.id}
+                clinicaId={clinicaId}
+                pacientes={[citaCtx.paciente]}
+                clientes={citaCtx.clientes}
+                vets={citaCtx.vets}
+                servicios={citaCtx.servicios}
+                lockPaciente
+                initial={{
+                  paciente_id: citaCtx.paciente.id,
+                  cliente_id:
+                    citaCtx.paciente.cliente_id || citaCtx.paciente.clinica_clientes?.id || "",
+                  estado: "confirmada",
+                }}
+                defaultDay={new Date()}
+                onCancel={() => setCitaCtx(null)}
+                onSaved={async () => {
+                  setCitaCtx(null);
+                  setMessage(
+                    `Turno guardado para ${citaCtx.paciente?.nombre || "la mascota"}.`,
+                  );
+                }}
+              />
+            </div>
+          ) : null}
+
+          <div className="mt-4">
+            <button
+              type="button"
+              className={secondaryBtnClass}
+              disabled={busyId === perfil.tutor.id}
+              onClick={() =>
+                pedirAcceso({
+                  id: perfil.tutor.id,
+                  nombre_completo: perfil.tutor.nombre_completo,
+                })
+              }
+            >
+              Pedir otra mascota
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex gap-2">
+            <input
+              className={fieldClass}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Buscar por tutor o mascota"
+            />
+            <button type="button" className={secondaryBtnClass} onClick={reload}>
+              Actualizar
+            </button>
+          </div>
+
+          <div className={cardClass}>
+            {loading ? (
+              <p className="text-sm text-stone-500">Cargando…</p>
+            ) : filtered.length === 0 ? (
+              <p className="text-sm text-stone-500">No hay tutores para mostrar.</p>
+            ) : (
+              <ul className="divide-y divide-stone-100">
+                {filtered.map((t) => {
+                  const estado = t.compartir?.estado;
+                  return (
+                    <li
+                      key={t.id}
+                      className="flex flex-wrap items-start justify-between gap-3 py-3"
+                    >
+                      <div>
+                        <p className="font-medium text-aguara-ink">{t.nombre_completo}</p>
+                        <p className="text-sm text-stone-500">
+                          {t.mascotas.length === 0
+                            ? "Sin mascotas registradas"
+                            : t.mascotas.map((m) => m.nombre).join(" · ")}
+                        </p>
+                        {estado === "pendiente" ? (
+                          <p className="mt-1 text-xs text-amber-700">
+                            Solicitud pendiente de aceptación
+                          </p>
+                        ) : null}
+                        {estado === "aceptada" ? (
+                          <p className="mt-1 text-xs text-emerald-700">Perfil compartido</p>
+                        ) : null}
+                        {estado === "rechazada" ? (
+                          <p className="mt-1 text-xs text-stone-500">Solicitud rechazada</p>
+                        ) : null}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {estado === "aceptada" ? (
+                          <>
+                            <button
+                              type="button"
+                              className={primaryBtnClass}
+                              disabled={busyId === t.id}
+                              onClick={() => verPerfilCompartido(t)}
+                            >
+                              Ver perfil
+                            </button>
+                            <button
+                              type="button"
+                              className={secondaryBtnClass}
+                              disabled={busyId === t.id}
+                              onClick={() => pedirAcceso(t)}
+                            >
+                              Pedir otra mascota
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            className={secondaryBtnClass}
+                            disabled={busyId === t.id || estado === "pendiente"}
+                            onClick={() => pedirAcceso(t)}
+                          >
+                            {estado === "pendiente"
+                              ? "Pendiente…"
+                              : estado === "rechazada"
+                                ? "Volver a solicitar"
+                                : "Pedir acceso"}
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

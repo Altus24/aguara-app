@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { confirmAccion, confirmEliminar, confirmGuardar } from '@/lib/confirmAction';
+import { formatDateTime } from '@/lib/dateFormat';
 import { generateChapitaQrSvg } from '@/lib/chapitas/chapitaQr';
 import {
   DEFAULT_QR_ESTILO,
@@ -358,7 +359,7 @@ export default function QrEstiloSection({ onSaved }) {
                       {p.actualizado_en ? (
                         <p className="text-xs text-gray-400">
                           Actualizada{' '}
-                          {new Date(p.actualizado_en).toLocaleString('es-AR')}
+                          {formatDateTime(p.actualizado_en)}
                         </p>
                       ) : null}
                     </div>

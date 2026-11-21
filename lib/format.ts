@@ -42,12 +42,17 @@ function parseDateOnly(value: string) {
   return date;
 }
 
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+/** DD/MM/YYYY */
 export function formatDate(value: string | null) {
   if (!value) return "Sin registro";
   const date = parseDateOnly(value);
   if (!date) return value;
 
-  return new Intl.DateTimeFormat("es-AR", { dateStyle: "medium" }).format(date);
+  return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()}`;
 }
 
 export function formatAge(birthDate: string | null) {
@@ -88,12 +93,10 @@ export function formatWeight(value: number | string | null | undefined) {
   return `${formatted} kg`;
 }
 
+/** DD/MM/YYYY HH:mm */
 export function formatVisit(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
 
-  return new Intl.DateTimeFormat("es-AR", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
+  return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }

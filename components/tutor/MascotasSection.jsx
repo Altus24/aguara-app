@@ -19,7 +19,7 @@ import {
   crearMascotaSinChapita,
   vincularChapitaAMascotaDigital,
 } from "@/lib/chapitas/mascotasTutor";
-import { listarMascotasTutorCompletas } from "@/lib/chapitas/tutorPortal";
+import { listarClinicas, listarMascotasTutorCompletas } from "@/lib/chapitas/tutorPortal";
 
 const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
 const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -37,6 +37,7 @@ export default function MascotasSection({ tutor }) {
   const [chapitaCodigo, setChapitaCodigo] = useState("");
   const [mascotaDigitalId, setMascotaDigitalId] = useState("");
   const [message, setMessage] = useState("");
+  const [clinicas, setClinicas] = useState([]);
 
   const digitales = mascotas.filter((m) => m.sin_chapita);
 
@@ -59,8 +60,14 @@ export default function MascotasSection({ tutor }) {
       setLoading(true);
       setError("");
       try {
-        const data = await listarMascotasTutorCompletas(tutor.id, tutor.email);
-        if (!cancelled) setMascotas(data.mascotas);
+        const [data, clinicasRows] = await Promise.all([
+          listarMascotasTutorCompletas(tutor.id, tutor.email),
+          listarClinicas().catch(() => []),
+        ]);
+        if (!cancelled) {
+          setMascotas(data.mascotas);
+          setClinicas(clinicasRows || []);
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "No se pudieron cargar las mascotas.");
@@ -231,6 +238,7 @@ export default function MascotasSection({ tutor }) {
             fieldClass={fieldClass}
             fotoInputId="tutor-foto"
             showTitle={false}
+            clinicas={clinicas}
           />
           <div className="flex flex-wrap gap-2">
             <button type="submit" disabled={saving} className={primaryBtnClass}>

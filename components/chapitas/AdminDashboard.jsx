@@ -27,6 +27,7 @@ import {
   getA4QrGrid,
 } from '@/lib/chapitas/chapitaQr';
 import { loadQrEstilo, loadQrPlantillas, normalizeQrEstilo } from '@/lib/chapitas/qrEstilo';
+import { formatDateTime } from '@/lib/dateFormat';
 import {
   CANTIDAD_SIN_CONFIG,
   DEFAULT_TIRADA_CANTIDAD,
@@ -800,7 +801,7 @@ export default function AdminDashboard() {
                         </td>
                         <td className="p-3 whitespace-nowrap">
                           {c.creado_en
-                            ? new Date(c.creado_en).toLocaleString('es-AR')
+                            ? formatDateTime(c.creado_en)
                             : '—'}
                         </td>
                         <td className="p-3 space-x-2 whitespace-nowrap">
@@ -880,7 +881,7 @@ export default function AdminDashboard() {
                         <td className="p-3">{mascotasPorTutor.get(t.id) || 0}</td>
                         <td className="p-3 whitespace-nowrap">
                           {t.creado_en
-                            ? new Date(t.creado_en).toLocaleString('es-AR')
+                            ? formatDateTime(t.creado_en)
                             : '—'}
                         </td>
                       </tr>
@@ -1223,7 +1224,7 @@ export default function AdminDashboard() {
                         <td className="p-3">{m.telefono_contacto}</td>
                         <td className="p-3 whitespace-nowrap">
                           {m.creado_en
-                            ? new Date(m.creado_en).toLocaleString('es-AR')
+                            ? formatDateTime(m.creado_en)
                             : '—'}
                         </td>
                         <td className="p-3 space-x-2 whitespace-nowrap">

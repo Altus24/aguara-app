@@ -39,7 +39,8 @@ function AdminEditMascotaModal({ mascota, onClose, onSaved }) {
       especie: mascota.especie === 'Gato' ? 'Gato' : 'Perro',
       raza: mascota.raza || '',
       sexo: mascota.sexo === 'Hembra' ? 'Hembra' : 'Macho',
-      castrado: mascota.castrado ? 'si' : 'no',
+      castrado:
+        mascota.castrado === true ? 'si' : mascota.castrado === false ? 'no' : 'ns',
       temperamento: mascota.temperamento || '',
       nro_chip: mascota.nro_chip || '',
       enfermedad: mascota.enfermedad || '',
@@ -96,7 +97,8 @@ function AdminEditMascotaModal({ mascota, onClose, onSaved }) {
         especie: form.especie,
         raza: form.raza.trim() || null,
         sexo: form.sexo,
-        castrado: form.castrado === 'si',
+        castrado:
+          form.castrado === 'si' ? true : form.castrado === 'no' ? false : null,
         temperamento: form.temperamento || null,
         nro_chip: form.nro_chip.trim() || null,
         enfermedad: form.enfermedad.trim() || null,
@@ -306,6 +308,7 @@ function AdminEditMascotaModal({ mascota, onClose, onSaved }) {
                 >
                   <option value="si">Sí</option>
                   <option value="no">No</option>
+                  <option value="ns">No lo sé</option>
                 </select>
               </div>
             </div>

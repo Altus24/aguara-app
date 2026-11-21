@@ -443,7 +443,11 @@ export default function CitaForm({
             value={form.estado}
             onChange={(e) => setForm((f) => ({ ...f, estado: e.target.value }))}
           >
-            {CITA_ESTADOS.map((e) => (
+            {CITA_ESTADOS.filter((e) =>
+              ["pendiente", "confirmada", "lista_espera", "finalizada", "no_asistio", "cancelada"].includes(
+                e.id,
+              ),
+            ).map((e) => (
               <option key={e.id} value={e.id}>
                 {e.label}
               </option>

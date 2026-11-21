@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useTutorAuth } from "@/context/TutorAuthContext";
 import { etiquetaEstado } from "@/lib/chapitas/clinicaOps";
 import { isDigitalMascotaId } from "@/lib/chapitas/chapitaId";
 import {
   actualizarDatosBasicosMascota,
+  actualizarFotoMascota,
   cargarPerfilClinicoMascota,
 } from "@/lib/chapitas/mascotaPerfil";
 import {
@@ -16,43 +17,24 @@ import {
   vincularChapitaAMascotaDigital,
 } from "@/lib/chapitas/mascotasTutor";
 import {
+  crearTratamientoTutor,
   crearVacunaTutor,
+  eliminarTratamientoTutor,
   eliminarVacunaTutor,
+  listarClinicas,
 } from "@/lib/chapitas/tutorPortal";
-import { esVacunaVencida } from "@/lib/chapitas/vacunas";
-import { confirmGuardar } from "@/lib/confirmAction";
+import { esVacunaVencida, vacunasParaEspecie } from "@/lib/chapitas/vacunas";
+import { confirmEliminar, confirmGuardar } from "@/lib/confirmAction";
 import { TEMPERAMENTOS_MASCOTA } from "@/components/mascotas/MascotaRegistroFields";
 import {
   Field,
   cardClass,
   fieldClass,
+  formatDate,
+  formatDateTime,
   primaryBtnClass,
   secondaryBtnClass,
 } from "@/components/tutor/ui";
-
-function formatDate(value) {
-  if (!value) return "—";
-  try {
-    return new Date(`${value}T12:00:00`).toLocaleDateString("es-AR");
-  } catch {
-    return String(value);
-  }
-}
-
-function formatDateTime(value) {
-  if (!value) return "—";
-  try {
-    return new Date(value).toLocaleString("es-AR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return String(value);
-  }
-}
 
 export default function TutorMascotaPerfil() {
   const params = useParams();
@@ -68,10 +50,15 @@ export default function TutorMascotaPerfil() {
   const [peso, setPeso] = useState("");
   const [castrado, setCastrado] = useState("");
   const [temperamento, setTemperamento] = useState("");
+  const [clinicaCabeceraId, setClinicaCabeceraId] = useState("");
+  const [clinicas, setClinicas] = useState([]);
   const [saving, setSaving] = useState(false);
   const [codigoChapita, setCodigoChapita] = useState("");
   const [linking, setLinking] = useState(false);
   const [linkMsg, setLinkMsg] = useState("");
+  const [uploadingFoto, setUploadingFoto] = useState(false);
+  const [fotoMsg, setFotoMsg] = useState("");
+  const fotoInputRef = useRef(null);
   const sinChapita = isDigitalMascotaId(chapitaId);
 
   useEffect(() => {
@@ -98,8 +85,9 @@ export default function TutorMascotaPerfil() {
       setPerfil(data);
       setFechaNacimiento(data.fecha_nacimiento || "");
       setPeso(data.peso != null ? String(data.peso) : "");
-      setCastrado(data.castrado === true ? "si" : data.castrado === false ? "no" : "");
+      setCastrado(data.castrado === true ? "si" : data.castrado === false ? "no" : "ns");
       setTemperamento(data.temperamento || "");
+      setClinicaCabeceraId(data.clinica_cabecera_id || "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar el perfil.");
       setPerfil(null);
@@ -114,8 +102,23 @@ export default function TutorMascotaPerfil() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chapitaId, authLoading, isAuthenticated, tutor?.id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    listarClinicas()
+      .then((rows) => {
+        if (!cancelled) setClinicas(rows || []);
+      })
+      .catch(() => {
+        if (!cancelled) setClinicas([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function handleSaveBasics(event) {
     event.preventDefault();
+    if (!(await confirmGuardar("los datos de la mascota"))) return;
     setSaving(true);
     setError("");
     try {
@@ -124,6 +127,7 @@ export default function TutorMascotaPerfil() {
         peso,
         castrado,
         temperamento,
+        clinica_cabecera_id: clinicaCabeceraId || null,
       });
       setEditing(false);
       await reload();
@@ -131,6 +135,25 @@ export default function TutorMascotaPerfil() {
       setError(err instanceof Error ? err.message : "No se pudieron guardar los datos.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleFotoChange(event) {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (!file) return;
+    if (!(await confirmGuardar("la nueva foto de perfil"))) return;
+    setUploadingFoto(true);
+    setError("");
+    setFotoMsg("");
+    try {
+      await actualizarFotoMascota(chapitaId, file);
+      setFotoMsg("Foto actualizada.");
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo actualizar la foto.");
+    } finally {
+      setUploadingFoto(false);
     }
   }
 
@@ -158,6 +181,37 @@ export default function TutorMascotaPerfil() {
       setLinking(false);
     }
   }
+
+  const hoy = new Date().toISOString().slice(0, 10);
+  const recordatoriosPerfil = useMemo(() => {
+    if (!perfil) return [];
+    const rows = [];
+    for (const v of perfil.vacunas || []) {
+      if (v.proxima_fecha && v.proxima_fecha >= hoy) {
+        rows.push({
+          id: `vac-${v.origen || "c"}-${v.id}`,
+          tipo: "Vacuna",
+          title: v.nombre,
+          date: v.proxima_fecha,
+          sort: v.proxima_fecha,
+        });
+      }
+    }
+    if (perfil.proximaCita?.inicio) {
+      const dia = String(perfil.proximaCita.inicio).slice(0, 10);
+      if (dia >= hoy) {
+        rows.push({
+          id: `cita-${perfil.proximaCita.id}`,
+          tipo: "Cita",
+          title: perfil.proximaCita.clinicas?.nombre || "Clínica",
+          dateLabel: formatDateTime(perfil.proximaCita.inicio),
+          detail: perfil.proximaCita.motivo || etiquetaEstado(perfil.proximaCita.estado),
+          sort: dia,
+        });
+      }
+    }
+    return rows.sort((a, b) => String(a.sort).localeCompare(String(b.sort)));
+  }, [perfil, hoy]);
 
   if (authLoading || loading) {
     return (
@@ -194,22 +248,42 @@ export default function TutorMascotaPerfil() {
         <Link href="/tutor" className={secondaryBtnClass}>
           ← Mis mascotas
         </Link>
+        <Link href="/tutor?tab=recordatorios" className="text-sm font-medium text-aguara-orange underline">
+          Ver todos los recordatorios
+        </Link>
       </div>
 
       <div className={`${cardClass} mb-5`}>
         <div className="flex items-start gap-4">
-          {perfil.foto_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={perfil.foto_url}
-              alt=""
-              className="size-20 rounded-2xl object-cover"
+          <div className="shrink-0">
+            {perfil.foto_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={perfil.foto_url}
+                alt=""
+                className="size-20 rounded-2xl object-cover"
+              />
+            ) : (
+              <span className="grid size-20 place-items-center rounded-2xl bg-aguara-cream text-2xl font-semibold text-aguara-orange">
+                {perfil.nombre?.charAt(0)?.toUpperCase() || "·"}
+              </span>
+            )}
+            <input
+              ref={fotoInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={handleFotoChange}
             />
-          ) : (
-            <span className="grid size-20 place-items-center rounded-2xl bg-aguara-cream text-2xl font-semibold text-aguara-orange">
-              {perfil.nombre?.charAt(0)?.toUpperCase() || "·"}
-            </span>
-          )}
+            <button
+              type="button"
+              disabled={uploadingFoto}
+              className="mt-2 w-full text-center text-xs font-medium text-aguara-orange underline disabled:opacity-60"
+              onClick={() => fotoInputRef.current?.click()}
+            >
+              {uploadingFoto ? "Subiendo…" : perfil.foto_url ? "Cambiar foto" : "Agregar foto"}
+            </button>
+          </div>
           <div>
             <p className="text-sm font-medium text-aguara-orange">Mi mascota</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight text-aguara-ink">
@@ -223,11 +297,10 @@ export default function TutorMascotaPerfil() {
             {perfil.nro_chip ? (
               <p className="mt-1 text-sm text-stone-500">Chip: {perfil.nro_chip}</p>
             ) : null}
-            {perfil.castrado != null ? (
-              <p className="mt-1 text-sm text-stone-500">
-                Castrado/a: {perfil.castrado ? "Sí" : "No"}
-              </p>
-            ) : null}
+            <p className="mt-1 text-sm text-stone-500">
+              Castrado/a:{" "}
+              {perfil.castrado === true ? "Sí" : perfil.castrado === false ? "No" : "No lo sé"}
+            </p>
             {perfil.temperamento ? (
               <p className="mt-1 text-sm text-stone-500">Temperamento: {perfil.temperamento}</p>
             ) : null}
@@ -247,9 +320,48 @@ export default function TutorMascotaPerfil() {
           {error}
         </p>
       ) : null}
+      {fotoMsg ? <p className="mb-4 text-sm text-emerald-700">{fotoMsg}</p> : null}
       {linkMsg ? <p className="mb-4 text-sm text-emerald-700">{linkMsg}</p> : null}
 
       <div className="space-y-5">
+        <section className={cardClass}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-aguara-ink">Recordatorios</h2>
+              <p className="text-sm text-stone-500">Pendientes con fecha desde hoy</p>
+            </div>
+            <Link
+              href={`/tutor?tab=agenda&sacar=1&mascota=${encodeURIComponent(chapitaId)}`}
+              className={primaryBtnClass}
+            >
+              Sacar turno
+            </Link>
+          </div>
+          {recordatoriosPerfil.length === 0 ? (
+            <p className="mt-3 text-sm text-stone-500">Sin recordatorios desde hoy.</p>
+          ) : (
+            <ul className="mt-3 divide-y divide-stone-100">
+              {recordatoriosPerfil.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex flex-wrap items-start justify-between gap-2 py-3 text-sm"
+                >
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-aguara-orange">
+                      {item.tipo}
+                    </p>
+                    <p className="font-medium text-aguara-ink">{item.title}</p>
+                    {item.detail ? <p className="text-stone-500">{item.detail}</p> : null}
+                  </div>
+                  <p className="shrink-0 text-stone-600">
+                    {item.dateLabel || (item.date ? formatDate(item.date) : "—")}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
         {sinChapita ? (
           <section className={cardClass}>
             <h2 className="text-lg font-semibold text-aguara-ink">Vincular chapita</h2>
@@ -318,6 +430,7 @@ export default function TutorMascotaPerfil() {
                   <option value="">Elegí una opción</option>
                   <option value="si">Sí</option>
                   <option value="no">No</option>
+                  <option value="ns">No lo sé</option>
                 </select>
               </label>
               <label className="block text-sm">
@@ -332,6 +445,24 @@ export default function TutorMascotaPerfil() {
                   {TEMPERAMENTOS_MASCOTA.map((t) => (
                     <option key={t} value={t}>
                       {t}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm sm:col-span-2">
+                <span className="mb-1 block font-medium text-stone-700">
+                  Clínica de cabecera <span className="font-normal text-stone-500">(opcional)</span>
+                </span>
+                <select
+                  value={clinicaCabeceraId}
+                  onChange={(e) => setClinicaCabeceraId(e.target.value)}
+                  className={fieldClass}
+                >
+                  <option value="">Sin clínica de cabecera</option>
+                  {clinicas.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre}
+                      {c.ciudad ? ` · ${c.ciudad}` : ""}
                     </option>
                   ))}
                 </select>
@@ -359,12 +490,28 @@ export default function TutorMascotaPerfil() {
               <div>
                 <dt className="text-stone-500">Castrado/a</dt>
                 <dd className="font-medium text-aguara-ink">
-                  {perfil.castrado == null ? "—" : perfil.castrado ? "Sí" : "No"}
+                  {perfil.castrado === true
+                    ? "Sí"
+                    : perfil.castrado === false
+                      ? "No"
+                      : "No lo sé"}
                 </dd>
               </div>
               <div>
                 <dt className="text-stone-500">Temperamento</dt>
                 <dd className="font-medium text-aguara-ink">{perfil.temperamento || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-stone-500">Clínica de cabecera</dt>
+                <dd className="font-medium text-aguara-ink">
+                  {perfil.clinica_cabecera?.nombre
+                    ? `${perfil.clinica_cabecera.nombre}${
+                        perfil.clinica_cabecera.ciudad
+                          ? ` · ${perfil.clinica_cabecera.ciudad}`
+                          : ""
+                      }`
+                    : "—"}
+                </dd>
               </div>
             </dl>
           )}
@@ -401,7 +548,15 @@ export default function TutorMascotaPerfil() {
         </section>
 
         <section className={cardClass}>
-          <h2 className="text-lg font-semibold text-aguara-ink">Próxima cita</h2>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h2 className="text-lg font-semibold text-aguara-ink">Próxima cita</h2>
+            <Link
+              href={`/tutor?tab=agenda&sacar=1&mascota=${encodeURIComponent(chapitaId)}`}
+              className={primaryBtnClass}
+            >
+              Sacar turno
+            </Link>
+          </div>
           {!perfil.proximaCita ? (
             <p className="mt-2 text-sm text-stone-500">No hay una próxima cita cargada.</p>
           ) : (
@@ -425,29 +580,15 @@ export default function TutorMascotaPerfil() {
           )}
         </section>
 
-        <section className={cardClass}>
-          <h2 className="text-lg font-semibold text-aguara-ink">Tratamientos activos</h2>
-          {perfil.tratamientos.length === 0 ? (
-            <p className="mt-2 text-sm text-stone-500">Sin tratamientos activos.</p>
-          ) : (
-            <ul className="mt-3 space-y-2 text-sm">
-              {perfil.tratamientos.map((t) => (
-                <li key={t.id} className="rounded-xl bg-aguara-cream/40 px-3 py-2">
-                  <strong>{t.titulo}</strong>
-                  {t.detalle ? <span className="block text-stone-600">{t.detalle}</span> : null}
-                  <span className="mt-1 block text-stone-500">
-                    Desde {formatDate(t.fecha_inicio)}
-                    {t.de_por_vida
-                      ? " · De por vida"
-                      : t.fecha_fin
-                        ? ` · Hasta ${formatDate(t.fecha_fin)}`
-                        : ""}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <TratamientosPerfilSection
+          tutor={tutor}
+          perfil={perfil}
+          chapitaId={chapitaId}
+          onChanged={async () => {
+            const next = await cargarPerfilClinicoMascota(chapitaId);
+            setPerfil(next);
+          }}
+        />
       </div>
     </section>
   );
@@ -457,6 +598,7 @@ function VacunasPerfilSection({ tutor, perfil, chapitaId, onChanged }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({
     nombre: "",
     fecha: new Date().toISOString().slice(0, 10),
@@ -480,6 +622,7 @@ function VacunasPerfilSection({ tutor, perfil, chapitaId, onChanged }) {
         fecha: new Date().toISOString().slice(0, 10),
       });
       setMessage("Vacuna agregada.");
+      setShowAdd(false);
       await onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar la vacuna.");
@@ -491,47 +634,11 @@ function VacunasPerfilSection({ tutor, perfil, chapitaId, onChanged }) {
   return (
     <section className={cardClass}>
       <h2 className="text-lg font-semibold text-aguara-ink">Vacunas</h2>
-      <p className="mt-1 text-sm text-stone-500">Cargá acá el nombre y la fecha de aplicación.</p>
-
-      <form onSubmit={handleSubmit} className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
-        <Field label="Nombre de la vacuna" id="perf-vac-nom">
-          <input
-            id="perf-vac-nom"
-            required
-            className={fieldClass}
-            value={form.nombre}
-            onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
-            placeholder="Antirrábica, séxtuple…"
-          />
-        </Field>
-        <Field label="Fecha" id="perf-vac-fecha">
-          <input
-            id="perf-vac-fecha"
-            type="date"
-            required
-            className={fieldClass}
-            value={form.fecha}
-            onChange={(e) => setForm((f) => ({ ...f, fecha: e.target.value }))}
-          />
-        </Field>
-        <div className="flex items-end">
-          <button type="submit" disabled={saving} className={primaryBtnClass}>
-            {saving ? "…" : "Agregar"}
-          </button>
-        </div>
-      </form>
-
-      {error ? (
-        <p className="mt-2 text-sm text-red-700" role="alert">
-          {error}
-        </p>
-      ) : null}
-      {message ? <p className="mt-2 text-sm text-emerald-700">{message}</p> : null}
 
       {perfil.vacunas.length === 0 ? (
-        <p className="mt-4 text-sm text-stone-500">Todavía no hay vacunas registradas.</p>
+        <p className="mt-3 text-sm text-stone-500">Todavía no hay vacunas registradas.</p>
       ) : (
-        <ul className="mt-4 space-y-2 text-sm">
+        <ul className="mt-3 space-y-2 text-sm">
           {perfil.vacunas.map((v) => (
             <li
               key={`${v.origen || "clinica"}-${v.id}`}
@@ -545,9 +652,9 @@ function VacunasPerfilSection({ tutor, perfil, chapitaId, onChanged }) {
                   </span>
                 ) : null}
                 {v.origen === "tutor" ? (
-                  <span className="ml-1 text-xs text-aguara-orange">(vos)</span>
+                  <span className="ml-1 text-xs text-aguara-orange">(cargada por vos)</span>
                 ) : (
-                  <span className="ml-1 text-xs text-stone-500">(clínica)</span>
+                  <span className="ml-1 text-xs text-stone-500">(cargada por la clínica)</span>
                 )}
                 {v.proxima_fecha ? (
                   <span className="block text-aguara-orange">
@@ -575,6 +682,257 @@ function VacunasPerfilSection({ tutor, perfil, chapitaId, onChanged }) {
           ))}
         </ul>
       )}
+
+      <button
+        type="button"
+        className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-aguara-orange hover:underline"
+        aria-expanded={showAdd}
+        onClick={() => {
+          setShowAdd((v) => !v);
+          setError("");
+          setMessage("");
+        }}
+      >
+        <span aria-hidden className={`inline-block transition-transform ${showAdd ? "rotate-90" : ""}`}>
+          ›
+        </span>
+        {showAdd ? "Ocultar formulario" : "Agregar vacuna"}
+      </button>
+
+      {showAdd ? (
+        <form onSubmit={handleSubmit} className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+          <Field label="Vacuna" id="perf-vac-nom">
+            <select
+              id="perf-vac-nom"
+              required
+              className={fieldClass}
+              value={form.nombre}
+              onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
+            >
+              <option value="">Seleccionar…</option>
+              {vacunasParaEspecie(perfil.especie).map((nombre) => (
+                <option key={nombre} value={nombre}>
+                  {nombre}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Fecha" id="perf-vac-fecha">
+            <input
+              id="perf-vac-fecha"
+              type="date"
+              required
+              className={fieldClass}
+              value={form.fecha}
+              onChange={(e) => setForm((f) => ({ ...f, fecha: e.target.value }))}
+            />
+          </Field>
+          <div className="flex items-end">
+            <button type="submit" disabled={saving} className={primaryBtnClass}>
+              {saving ? "…" : "Agregar"}
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      {error ? (
+        <p className="mt-2 text-sm text-red-700" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {message ? <p className="mt-2 text-sm text-emerald-700">{message}</p> : null}
+    </section>
+  );
+}
+
+function TratamientosPerfilSection({ tutor, perfil, chapitaId, onChanged }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({
+    titulo: "",
+    detalle: "",
+    fecha_inicio: new Date().toISOString().slice(0, 10),
+    fecha_fin: "",
+    de_por_vida: false,
+  });
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (!tutor?.id) return;
+    if (!(await confirmGuardar(`el tratamiento “${form.titulo.trim()}”`))) return;
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      await crearTratamientoTutor(tutor.id, {
+        mascota_id: chapitaId,
+        paciente_id: perfil.pacienteIds?.[0] || null,
+        titulo: form.titulo,
+        detalle: form.detalle,
+        fecha_inicio: form.fecha_inicio,
+        fecha_fin: form.fecha_fin,
+        de_por_vida: form.de_por_vida,
+      });
+      setForm({
+        titulo: "",
+        detalle: "",
+        fecha_inicio: new Date().toISOString().slice(0, 10),
+        fecha_fin: "",
+        de_por_vida: false,
+      });
+      setMessage("Tratamiento agregado.");
+      setShowAdd(false);
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar el tratamiento.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className={cardClass}>
+      <h2 className="text-lg font-semibold text-aguara-ink">Tratamientos activos</h2>
+
+      {(perfil.tratamientos || []).length === 0 ? (
+        <p className="mt-3 text-sm text-stone-500">Sin tratamientos activos.</p>
+      ) : (
+        <ul className="mt-3 space-y-2 text-sm">
+          {(perfil.tratamientos || []).map((t) => (
+            <li
+              key={`${t.origen || "clinica"}-${t.id}`}
+              className="flex flex-wrap items-start justify-between gap-2 rounded-xl bg-aguara-cream/40 px-3 py-2"
+            >
+              <div>
+                <strong>{t.titulo}</strong>
+                {t.origen === "tutor" ? (
+                  <span className="ml-1 text-xs text-aguara-orange">(cargado por vos)</span>
+                ) : (
+                  <span className="ml-1 text-xs text-stone-500">
+                    (cargado por {t.clinica_nombre || "la clínica"})
+                  </span>
+                )}
+                {t.detalle ? <span className="block text-stone-600">{t.detalle}</span> : null}
+                <span className="mt-1 block text-stone-500">
+                  Desde {formatDate(t.fecha_inicio)}
+                  {t.de_por_vida
+                    ? " · De por vida"
+                    : t.fecha_fin
+                      ? ` · Hasta ${formatDate(t.fecha_fin)}`
+                      : ""}
+                </span>
+              </div>
+              {t.origen === "tutor" && tutor?.id ? (
+                <button
+                  type="button"
+                  className="text-xs text-stone-500 underline"
+                  onClick={async () => {
+                    if (!(await confirmEliminar(`el tratamiento “${t.titulo}”`))) return;
+                    try {
+                      await eliminarTratamientoTutor(tutor.id, t.id);
+                      await onChanged();
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "No se pudo eliminar.");
+                    }
+                  }}
+                >
+                  Quitar
+                </button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <button
+        type="button"
+        className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-aguara-orange hover:underline"
+        aria-expanded={showAdd}
+        onClick={() => {
+          setShowAdd((v) => !v);
+          setError("");
+          setMessage("");
+        }}
+      >
+        <span aria-hidden className={`inline-block transition-transform ${showAdd ? "rotate-90" : ""}`}>
+          ›
+        </span>
+        {showAdd ? "Ocultar formulario" : "Agregar tratamiento"}
+      </button>
+
+      {showAdd ? (
+        <form onSubmit={handleSubmit} className="mt-3 grid gap-3 sm:grid-cols-2">
+          <Field label="Tratamiento" id="perf-tx-titulo" className="sm:col-span-2">
+            <input
+              id="perf-tx-titulo"
+              required
+              className={fieldClass}
+              value={form.titulo}
+              onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))}
+              placeholder="Nombre del tratamiento"
+            />
+          </Field>
+          <Field label="Detalle / indicaciones" id="perf-tx-det" className="sm:col-span-2">
+            <input
+              id="perf-tx-det"
+              className={fieldClass}
+              value={form.detalle}
+              onChange={(e) => setForm((f) => ({ ...f, detalle: e.target.value }))}
+              placeholder="Opcional"
+            />
+          </Field>
+          <Field label="Inicio" id="perf-tx-ini">
+            <input
+              id="perf-tx-ini"
+              type="date"
+              required
+              className={fieldClass}
+              value={form.fecha_inicio}
+              onChange={(e) => setForm((f) => ({ ...f, fecha_inicio: e.target.value }))}
+            />
+          </Field>
+          <div className="flex flex-col justify-end gap-2">
+            <label className="flex items-center gap-2 text-sm text-stone-700">
+              <input
+                type="checkbox"
+                checked={form.de_por_vida}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    de_por_vida: e.target.checked,
+                    fecha_fin: e.target.checked ? "" : f.fecha_fin,
+                  }))
+                }
+              />
+              De por vida
+            </label>
+            {!form.de_por_vida ? (
+              <input
+                type="date"
+                className={fieldClass}
+                value={form.fecha_fin}
+                onChange={(e) => setForm((f) => ({ ...f, fecha_fin: e.target.value }))}
+                title="Fecha de finalización"
+                placeholder="Fin"
+              />
+            ) : null}
+          </div>
+          <div className="sm:col-span-2">
+            <button type="submit" disabled={saving} className={primaryBtnClass}>
+              {saving ? "…" : "Agregar tratamiento"}
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      {error ? (
+        <p className="mt-2 text-sm text-red-700" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {message ? <p className="mt-2 text-sm text-emerald-700">{message}</p> : null}
     </section>
   );
 }
