@@ -8,6 +8,7 @@ import { useTutorAuth } from "@/context/TutorAuthContext";
 import { etiquetaEstado } from "@/lib/chapitas/clinicaOps";
 import { isDigitalMascotaId } from "@/lib/chapitas/chapitaId";
 import {
+  actualizarClinicaReferenciaMascota,
   actualizarDatosBasicosMascota,
   actualizarFotoMascota,
   cargarPerfilClinicoMascota,
@@ -25,7 +26,10 @@ import {
 } from "@/lib/chapitas/tutorPortal";
 import { esVacunaVencida, vacunasParaEspecie } from "@/lib/chapitas/vacunas";
 import { confirmEliminar, confirmGuardar } from "@/lib/confirmAction";
-import { TEMPERAMENTOS_MASCOTA } from "@/components/mascotas/MascotaRegistroFields";
+import {
+  CLINICA_AGREGAR_VALUE,
+  TEMPERAMENTOS_MASCOTA,
+} from "@/components/mascotas/MascotaRegistroFields";
 import {
   Field,
   cardClass,
@@ -51,6 +55,17 @@ export default function TutorMascotaPerfil() {
   const [castrado, setCastrado] = useState("");
   const [temperamento, setTemperamento] = useState("");
   const [clinicaCabeceraId, setClinicaCabeceraId] = useState("");
+  const [clinicaRefNombre, setClinicaRefNombre] = useState("");
+  const [clinicaRefDireccion, setClinicaRefDireccion] = useState("");
+  const [clinicaRefTelefono, setClinicaRefTelefono] = useState("");
+  const [clinicaRefMsg, setClinicaRefMsg] = useState("");
+  const [savingClinicaRef, setSavingClinicaRef] = useState(false);
+  const [showClinicaRefModal, setShowClinicaRefModal] = useState(false);
+  const [draftRef, setDraftRef] = useState({
+    nombre: "",
+    direccion: "",
+    telefono: "",
+  });
   const [clinicas, setClinicas] = useState([]);
   const [saving, setSaving] = useState(false);
   const [codigoChapita, setCodigoChapita] = useState("");
@@ -88,6 +103,9 @@ export default function TutorMascotaPerfil() {
       setCastrado(data.castrado === true ? "si" : data.castrado === false ? "no" : "ns");
       setTemperamento(data.temperamento || "");
       setClinicaCabeceraId(data.clinica_cabecera_id || "");
+      setClinicaRefNombre(data.clinica_ref_nombre || "");
+      setClinicaRefDireccion(data.clinica_ref_direccion || "");
+      setClinicaRefTelefono(data.clinica_ref_telefono || "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar el perfil.");
       setPerfil(null);
@@ -121,6 +139,7 @@ export default function TutorMascotaPerfil() {
     if (!(await confirmGuardar("los datos de la mascota"))) return;
     setSaving(true);
     setError("");
+    setClinicaRefMsg("");
     try {
       await actualizarDatosBasicosMascota(chapitaId, {
         fecha_nacimiento: fechaNacimiento,
@@ -128,6 +147,9 @@ export default function TutorMascotaPerfil() {
         castrado,
         temperamento,
         clinica_cabecera_id: clinicaCabeceraId || null,
+        clinica_ref_nombre: clinicaRefNombre,
+        clinica_ref_direccion: clinicaRefDireccion,
+        clinica_ref_telefono: clinicaRefTelefono,
       });
       setEditing(false);
       await reload();
@@ -135,6 +157,66 @@ export default function TutorMascotaPerfil() {
       setError(err instanceof Error ? err.message : "No se pudieron guardar los datos.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  function openClinicaRefModal() {
+    setDraftRef({
+      nombre: clinicaRefNombre,
+      direccion: clinicaRefDireccion,
+      telefono: clinicaRefTelefono,
+    });
+    setClinicaRefMsg("");
+    setShowClinicaRefModal(true);
+  }
+
+  function handleClinicaSelectChange(value) {
+    if (value === CLINICA_AGREGAR_VALUE) {
+      setClinicaCabeceraId("");
+      openClinicaRefModal();
+      return;
+    }
+    setShowClinicaRefModal(false);
+    setClinicaCabeceraId(value);
+    if (value) {
+      setClinicaRefNombre("");
+      setClinicaRefDireccion("");
+      setClinicaRefTelefono("");
+      setClinicaRefMsg("");
+    }
+  }
+
+  async function handleGuardarClinicaRef() {
+    const nombreClinica = draftRef.nombre.trim();
+    if (!nombreClinica) {
+      setClinicaRefMsg("Indicá al menos el nombre de la clínica.");
+      return;
+    }
+    if (!(await confirmGuardar(`la clínica de referencia “${nombreClinica}”`))) return;
+    setSavingClinicaRef(true);
+    setError("");
+    setClinicaRefMsg("");
+    try {
+      await actualizarClinicaReferenciaMascota(chapitaId, {
+        clinica_cabecera_id: null,
+        clinica_ref_nombre: nombreClinica,
+        clinica_ref_direccion: draftRef.direccion.trim(),
+        clinica_ref_telefono: draftRef.telefono.trim(),
+      });
+      setClinicaCabeceraId("");
+      setClinicaRefNombre(nombreClinica);
+      setClinicaRefDireccion(draftRef.direccion.trim());
+      setClinicaRefTelefono(draftRef.telefono.trim());
+      setClinicaRefMsg("Clínica de referencia guardada.");
+      setShowClinicaRefModal(false);
+      setEditing(false);
+      await reload();
+    } catch (err) {
+      setClinicaRefMsg(
+        err instanceof Error ? err.message : "No se pudo guardar la clínica.",
+      );
+    } finally {
+      setSavingClinicaRef(false);
     }
   }
 
@@ -196,6 +278,37 @@ export default function TutorMascotaPerfil() {
           sort: v.proxima_fecha,
         });
       }
+    }
+    for (const d of perfil.desparasitaciones || []) {
+      if (d.proxima_fecha && d.proxima_fecha >= hoy) {
+        rows.push({
+          id: `desp-${d.id}`,
+          tipo: "Desparasitación",
+          title: d.producto,
+          date: d.proxima_fecha,
+          detail: "Fecha de caducidad / próxima dosis",
+          sort: d.proxima_fecha,
+        });
+      }
+    }
+    for (const r of perfil.recordatorios || []) {
+      if (r.fecha_proxima && r.fecha_proxima < hoy) continue;
+      const tipoLabel =
+        r.tipo === "medicacion"
+          ? "Medicación"
+          : r.tipo === "control"
+            ? "Control"
+            : r.tipo === "vacuna"
+              ? "Vacuna"
+              : "Recordatorio";
+      rows.push({
+        id: `rec-${r.origen || "c"}-${r.id}`,
+        tipo: tipoLabel,
+        title: r.titulo,
+        date: r.fecha_proxima || null,
+        detail: r.detalle || null,
+        sort: r.fecha_proxima || "9999-12-31",
+      });
     }
     if (perfil.proximaCita?.inicio) {
       const dia = String(perfil.proximaCita.inicio).slice(0, 10);
@@ -451,14 +564,24 @@ export default function TutorMascotaPerfil() {
               </label>
               <label className="block text-sm sm:col-span-2">
                 <span className="mb-1 block font-medium text-stone-700">
-                  Clínica de cabecera <span className="font-normal text-stone-500">(opcional)</span>
+                  Clínica de cabecera{" "}
+                  <span className="font-normal text-stone-500">(opcional)</span>
                 </span>
                 <select
-                  value={clinicaCabeceraId}
-                  onChange={(e) => setClinicaCabeceraId(e.target.value)}
+                  value={
+                    clinicaCabeceraId
+                      ? clinicaCabeceraId
+                      : clinicaRefNombre.trim()
+                        ? CLINICA_AGREGAR_VALUE
+                        : ""
+                  }
+                  onChange={(e) => handleClinicaSelectChange(e.target.value)}
                   className={fieldClass}
                 >
-                  <option value="">Sin clínica de cabecera</option>
+                  {!clinicaCabeceraId && !clinicaRefNombre.trim() ? (
+                    <option value="">Elegí una clínica</option>
+                  ) : null}
+                  <option value={CLINICA_AGREGAR_VALUE}>Agregar clínica</option>
                   {clinicas.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.nombre}
@@ -467,6 +590,24 @@ export default function TutorMascotaPerfil() {
                   ))}
                 </select>
               </label>
+              {clinicaRefNombre.trim() && !clinicaCabeceraId ? (
+                <div className="sm:col-span-2 rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-2 text-sm text-stone-700">
+                  <p className="font-medium">{clinicaRefNombre}</p>
+                  {clinicaRefDireccion ? (
+                    <p className="text-stone-500">{clinicaRefDireccion}</p>
+                  ) : null}
+                  {clinicaRefTelefono ? (
+                    <p className="text-stone-500">Tel. {clinicaRefTelefono}</p>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="mt-2 text-sm font-medium text-orange-700 hover:underline"
+                    onClick={openClinicaRefModal}
+                  >
+                    Editar clínica de referencia
+                  </button>
+                </div>
+              ) : null}
               <button type="submit" disabled={saving} className={`${primaryBtnClass} sm:col-span-2`}>
                 {saving ? "Guardando…" : "Guardar"}
               </button>
@@ -501,16 +642,36 @@ export default function TutorMascotaPerfil() {
                 <dt className="text-stone-500">Temperamento</dt>
                 <dd className="font-medium text-aguara-ink">{perfil.temperamento || "—"}</dd>
               </div>
-              <div>
+              <div className="sm:col-span-2 lg:col-span-3">
                 <dt className="text-stone-500">Clínica de cabecera</dt>
                 <dd className="font-medium text-aguara-ink">
-                  {perfil.clinica_cabecera?.nombre
-                    ? `${perfil.clinica_cabecera.nombre}${
-                        perfil.clinica_cabecera.ciudad
+                  {perfil.clinica_cabecera?.nombre || perfil.clinica_ref_nombre ? (
+                    <div className="space-y-0.5">
+                      <p>
+                        {perfil.clinica_cabecera?.nombre || perfil.clinica_ref_nombre}
+                        {perfil.clinica_cabecera?.ciudad
                           ? ` · ${perfil.clinica_cabecera.ciudad}`
-                          : ""
-                      }`
-                    : "—"}
+                          : ""}
+                      </p>
+                      {(perfil.clinica_cabecera?.direccion ||
+                        perfil.clinica_ref_direccion) && (
+                        <p className="font-normal text-stone-600">
+                          {perfil.clinica_cabecera?.direccion ||
+                            perfil.clinica_ref_direccion}
+                        </p>
+                      )}
+                      {(perfil.clinica_cabecera?.telefono ||
+                        perfil.clinica_ref_telefono) && (
+                        <p className="font-normal text-stone-600">
+                          Tel.{" "}
+                          {perfil.clinica_cabecera?.telefono ||
+                            perfil.clinica_ref_telefono}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    "—"
+                  )}
                 </dd>
               </div>
             </dl>
@@ -590,6 +751,94 @@ export default function TutorMascotaPerfil() {
           }}
         />
       </div>
+
+      {showClinicaRefModal ? (
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/45 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="tutor-clinica-ref-title"
+          onClick={() => setShowClinicaRefModal(false)}
+        >
+          <div
+            className="w-full max-w-md space-y-4 rounded-xl bg-white p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="tutor-clinica-ref-title" className="text-lg font-semibold text-stone-900">
+              Clínica de referencia
+            </h2>
+            <p className="text-sm text-stone-500">
+              Aunque no esté en Aguará, queda como referencia de la mascota.
+            </p>
+            <label className="block text-sm">
+              <span className="mb-1 block text-stone-600">Nombre</span>
+              <input
+                type="text"
+                autoFocus
+                value={draftRef.nombre}
+                onChange={(e) => {
+                  setDraftRef((d) => ({ ...d, nombre: e.target.value }));
+                  setClinicaRefMsg("");
+                }}
+                className={fieldClass}
+                placeholder="Ej. Veterinaria San Roque"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-stone-600">Dirección</span>
+              <input
+                type="text"
+                value={draftRef.direccion}
+                onChange={(e) => {
+                  setDraftRef((d) => ({ ...d, direccion: e.target.value }));
+                  setClinicaRefMsg("");
+                }}
+                className={fieldClass}
+                placeholder="Calle, número, ciudad"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-stone-600">Teléfono de contacto</span>
+              <input
+                type="tel"
+                value={draftRef.telefono}
+                onChange={(e) => {
+                  setDraftRef((d) => ({ ...d, telefono: e.target.value }));
+                  setClinicaRefMsg("");
+                }}
+                className={fieldClass}
+                placeholder="Ej. 11 5555-1234"
+              />
+            </label>
+            {clinicaRefMsg ? (
+              <p
+                className={`text-sm ${
+                  /guardada/i.test(clinicaRefMsg) ? "text-emerald-700" : "text-amber-700"
+                }`}
+              >
+                {clinicaRefMsg}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className={secondaryBtnClass}
+                onClick={() => setShowClinicaRefModal(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={savingClinicaRef}
+                onClick={handleGuardarClinicaRef}
+                className={primaryBtnClass}
+              >
+                {savingClinicaRef ? "Guardando…" : "Guardar clínica"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

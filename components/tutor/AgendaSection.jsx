@@ -327,6 +327,7 @@ function CitaForm({ tutor, mascotas, clinicas, initial, preferMascotaId, onCance
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [disponibilidadMsg, setDisponibilidadMsg] = useState("");
   const [compartirHc, setCompartirHc] = useState(true);
   const [yaTienePermisoHc, setYaTienePermisoHc] = useState(false);
   const [checkingPermisoHc, setCheckingPermisoHc] = useState(false);
@@ -446,48 +447,68 @@ function CitaForm({ tutor, mascotas, clinicas, initial, preferMascotaId, onCance
     async function loadSlots() {
       if (!form.clinica_id || !form.veterinario_id || !form.fecha) {
         setSlots([]);
+        setDisponibilidadMsg("");
         return;
       }
       setLoadingSlots(true);
       setError("");
+      setDisponibilidadMsg("");
       try {
         let available = [];
+        let aviso = "";
+        const opts = { citaIdExcluir: initial?.id || null };
+
         if (form.veterinario_id === VET_SEGUN_DISPONIBILIDAD) {
-          const data = await listarSlotsSegunDisponibilidad(form.clinica_id, form.fecha);
+          const data = await listarSlotsSegunDisponibilidad(
+            form.clinica_id,
+            form.fecha,
+            opts,
+          );
           available = [...data.slots];
+          if (!data.vets?.length) {
+            aviso = "Esta clínica no tiene veterinarios activos para turnos.";
+          } else if (!data.algunoConAgenda) {
+            aviso =
+              "Ningún veterinario tiene horarios cargados. La clínica debe configurar su agenda.";
+          } else if (!available.length) {
+            aviso =
+              "No hay horarios libres ese día según la agenda de los veterinarios. Probá otra fecha.";
+          }
         } else {
           const data = await listarHorariosYOcupacion(
             form.clinica_id,
             form.fecha,
             form.veterinario_id,
+            opts,
           );
           available = [...data.slots];
+          if (data.sinHorarios) {
+            aviso =
+              "Este veterinario no tiene horarios cargados. No se puede sacar/reprogramar turno hasta que la clínica configure su agenda.";
+          } else if (data.sinAtencionEseDia) {
+            aviso =
+              "El veterinario no atiende ese día (o está fuera del horario de apertura de la clínica). Elegí otra fecha.";
+          } else if (data.sinLibres) {
+            aviso =
+              "No quedan turnos libres ese día para este veterinario. Elegí otra fecha u otro profesional.";
+          }
         }
+
         if (cancelled) return;
-        if (
-          initial?.id &&
-          initial.inicio &&
-          toDateInput(initial.inicio) === form.fecha &&
-          (form.veterinario_id === VET_SEGUN_DISPONIBILIDAD ||
-            !initial.veterinario_id ||
-            initial.veterinario_id === form.veterinario_id)
-        ) {
-          const own = toTimeLabel(initial.inicio);
-          if (own && !available.includes(own)) available.push(own);
-          available.sort();
-        }
         setSlots(available);
+        setDisponibilidadMsg(aviso);
         if (form.hora && !available.includes(form.hora)) {
           setForm((f) => ({ ...f, hora: "" }));
         }
       } catch (err) {
         if (!cancelled) {
           setSlots([]);
-          setError(
+          const msg =
             err instanceof Error
               ? err.message
-              : "No se pudieron cargar los horarios disponibles.",
-          );
+              : "No se pudieron cargar los horarios disponibles.";
+          setError(msg);
+          setDisponibilidadMsg(msg);
         }
       } finally {
         if (!cancelled) setLoadingSlots(false);
@@ -498,10 +519,21 @@ function CitaForm({ tutor, mascotas, clinicas, initial, preferMascotaId, onCance
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.clinica_id, form.veterinario_id, form.fecha, initial?.id, initial?.inicio]);
+  }, [form.clinica_id, form.veterinario_id, form.fecha, initial?.id]);
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (!form.hora || !slots.length) {
+      setError(
+        disponibilidadMsg ||
+          "No hay horarios disponibles para ese día. Revisá la agenda del veterinario o elegí otra fecha.",
+      );
+      return;
+    }
+    if (disponibilidadMsg && !slots.includes(form.hora)) {
+      setError(disponibilidadMsg);
+      return;
+    }
     if (!(await confirmGuardar(initial?.id ? "la reprogramación del turno" : "la solicitud de turno"))) {
       return;
     }
@@ -678,7 +710,12 @@ function CitaForm({ tutor, mascotas, clinicas, initial, preferMascotaId, onCance
               </option>
             ))}
           </select>
-          {segunDisponibilidad && form.fecha ? (
+          {disponibilidadMsg ? (
+            <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              {disponibilidadMsg}
+            </p>
+          ) : null}
+          {segunDisponibilidad && form.fecha && !disponibilidadMsg ? (
             <p className="mt-1 text-xs text-stone-500">
               Se muestran horarios libres de cualquier veterinario. Al enviar, se asigna uno
               disponible en ese horario.
@@ -743,7 +780,11 @@ function CitaForm({ tutor, mascotas, clinicas, initial, preferMascotaId, onCance
 
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       <div className="flex gap-2">
-        <button type="submit" disabled={saving || loadingSlots || loadingVets} className={primaryBtnClass}>
+        <button
+          type="submit"
+          disabled={saving || loadingSlots || loadingVets || (!!form.fecha && !!form.veterinario_id && !slots.length)}
+          className={primaryBtnClass}
+        >
           {saving ? "Enviando…" : initial?.id ? "Pedir reprogramación" : "Enviar solicitud"}
         </button>
         <button type="button" className={secondaryBtnClass} onClick={onCancel}>

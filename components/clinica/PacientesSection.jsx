@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import CitaForm from "@/components/clinica/CitaForm";
+import { ConsultaForm, DetalleConsulta } from "@/components/clinica/HistoriasSection";
 import {
   cardClass,
   Field,
@@ -18,12 +19,11 @@ import MascotaRegistroFields, {
 } from "@/components/mascotas/MascotaRegistroFields";
 import {
   actualizarArchivo,
-  actualizarConsulta,
   actualizarDesparasitacion,
   actualizarVacuna,
+  consultaPendienteCompletar,
   crearArchivo,
   crearCliente,
-  crearConsulta,
   crearDesparasitacion,
   crearPaciente,
   crearVacuna,
@@ -281,6 +281,10 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
         datos_adicionales: form.datos_adicionales,
         foto_url: fotoUrl,
         chapita_codigo: form.chapita_codigo,
+        clinica_cabecera_id: form.clinica_cabecera_id || null,
+        clinica_ref_nombre: form.clinica_ref_nombre,
+        clinica_ref_direccion: form.clinica_ref_direccion,
+        clinica_ref_telefono: form.clinica_ref_telefono,
       });
       await onCreated();
     } catch (err) {
@@ -429,7 +433,30 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showCitaForm, setShowCitaForm] = useState(false);
+  const [showHcForm, setShowHcForm] = useState(false);
+  const [selectedConsultaId, setSelectedConsultaId] = useState(null);
   const [citaMsg, setCitaMsg] = useState("");
+
+  async function reloadFicha() {
+    const p = await obtenerPaciente(pacienteId);
+    const [c, v, d, a, vetsRows, serviciosRows, clientesRows] = await Promise.all([
+      listarConsultas(clinicaId, { pacienteId }),
+      listarVacunasPacienteCompletas(p, { clinicaId }),
+      listarDesparasitacionesPacienteCompletas(p, { clinicaId }),
+      listarArchivosPacienteCompletas(p, { clinicaId }),
+      listarVeterinarios(clinicaId),
+      listarServiciosActivos(clinicaId),
+      listarClientes(clinicaId),
+    ]);
+    setPaciente(p);
+    setConsultas(c);
+    setVacunas(v);
+    setDesparas(d);
+    setArchivos(a);
+    setVets((vetsRows || []).filter((vet) => vet.activo !== false));
+    setServicios(serviciosRows || []);
+    setClientes(clientesRows || []);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -437,26 +464,7 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
       setLoading(true);
       setError("");
       try {
-        const p = await obtenerPaciente(pacienteId);
-        const [c, v, d, a, vetsRows, serviciosRows, clientesRows] = await Promise.all([
-          listarConsultas(clinicaId, { pacienteId }),
-          listarVacunasPacienteCompletas(p, { clinicaId }),
-          listarDesparasitacionesPacienteCompletas(p, { clinicaId }),
-          listarArchivosPacienteCompletas(p, { clinicaId }),
-          listarVeterinarios(clinicaId),
-          listarServiciosActivos(clinicaId),
-          listarClientes(clinicaId),
-        ]);
-        if (!cancelled) {
-          setPaciente(p);
-          setConsultas(c);
-          setVacunas(v);
-          setDesparas(d);
-          setArchivos(a);
-          setVets((vetsRows || []).filter((vet) => vet.activo !== false));
-          setServicios(serviciosRows || []);
-          setClientes(clientesRows || []);
-        }
+        await reloadFicha();
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Error al cargar ficha.");
       } finally {
@@ -467,11 +475,26 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clinicaId, pacienteId]);
 
   if (loading) return <p className="text-sm text-stone-500">Cargando ficha…</p>;
   if (error) return <p className="text-sm text-red-700">{error}</p>;
   if (!paciente) return null;
+
+  if (selectedConsultaId) {
+    return (
+      <DetalleConsulta
+        clinicaId={clinicaId}
+        consultaId={selectedConsultaId}
+        vets={vets}
+        onBack={() => setSelectedConsultaId(null)}
+        onChanged={async () => {
+          await reloadFicha();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -479,16 +502,30 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
         <button type="button" className={secondaryBtnClass} onClick={onBack}>
           ← Volver al listado
         </button>
-        <button
-          type="button"
-          className={primaryBtnClass}
-          onClick={() => {
-            setCitaMsg("");
-            setShowCitaForm((v) => !v);
-          }}
-        >
-          {showCitaForm ? "Cerrar cita" : "Programar cita"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={secondaryBtnClass}
+            onClick={() => {
+              setCitaMsg("");
+              setShowHcForm(false);
+              setShowCitaForm((v) => !v);
+            }}
+          >
+            {showCitaForm ? "Cerrar cita" : "Programar cita"}
+          </button>
+          <button
+            type="button"
+            className={primaryBtnClass}
+            onClick={() => {
+              setCitaMsg("");
+              setShowCitaForm(false);
+              setShowHcForm((v) => !v);
+            }}
+          >
+            {showHcForm ? "Cerrar" : "Nueva historia clínica"}
+          </button>
+        </div>
       </div>
 
       <div className={cardClass}>
@@ -505,8 +542,11 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
             ? ` · ${paciente.clinica_clientes.telefono}`
             : ""}
         </p>
+        {paciente.enfermedad ? (
+          <p className="mt-2 text-sm text-amber-800">Enfermedad: {paciente.enfermedad}</p>
+        ) : null}
         {paciente.alergias ? (
-          <p className="mt-2 text-sm text-amber-800">Alergias: {paciente.alergias}</p>
+          <p className="mt-1 text-sm text-amber-800">Alergias: {paciente.alergias}</p>
         ) : null}
         {paciente.chip ? <p className="mt-1 text-sm text-stone-500">Chip: {paciente.chip}</p> : null}
       </div>
@@ -535,6 +575,32 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
         />
       ) : null}
 
+      {showHcForm ? (
+        <ConsultaForm
+          clinicaId={clinicaId}
+          pacientes={[paciente]}
+          clientes={
+            paciente.clinica_clientes
+              ? [paciente.clinica_clientes]
+              : clientes.filter(
+                  (c) => c.id === (paciente.cliente_id || paciente.clinica_clientes?.id),
+                )
+          }
+          vets={vets}
+          lockPaciente
+          initial={{
+            paciente_id: paciente.id,
+            cliente_id: paciente.cliente_id || paciente.clinica_clientes?.id || "",
+          }}
+          onCancel={() => setShowHcForm(false)}
+          onSaved={async () => {
+            setShowHcForm(false);
+            setCitaMsg(`Historia clínica creada para ${paciente.nombre}.`);
+            await reloadFicha();
+          }}
+        />
+      ) : null}
+
       <div className={cardClass}>
         <h3 className="font-semibold text-aguara-ink">Historial completo</h3>
         <p className="mt-1 text-xs text-stone-500">
@@ -544,27 +610,49 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
           <p className="mt-3 text-sm text-stone-500">Sin consultas registradas.</p>
         ) : (
           <ul className="mt-3 divide-y divide-stone-100">
-            {consultas.map((c) => (
-              <li key={c.id} className="py-3">
-                <p className="font-medium text-aguara-ink">
-                  {formatDateTime(c.fecha)}
-                  {c.cerrada ? " · Cerrada" : " · Abierta"}
-                  {c.clinica_id && c.clinica_id !== clinicaId
-                    ? ` · compartida (${c.clinicas?.nombre || "otra clínica"})`
-                    : ""}
-                </p>
-                <p className="text-sm text-stone-600">{c.motivo || "Consulta"}</p>
-                {c.diagnostico ? (
-                  <p className="mt-1 text-sm text-stone-700">Dx: {c.diagnostico}</p>
-                ) : null}
-                {c.tratamiento ? (
-                  <p className="text-sm text-stone-700">Tx: {c.tratamiento}</p>
-                ) : null}
-                {c.medicacion ? (
-                  <p className="text-sm text-stone-700">Med: {c.medicacion}</p>
-                ) : null}
-              </li>
-            ))}
+            {consultas.map((c) => {
+              const porCompletar = consultaPendienteCompletar(c);
+              const propia = !c.clinica_id || c.clinica_id === clinicaId;
+              return (
+                <li key={c.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-aguara-ink">
+                      {formatDateTime(c.fecha)}
+                      {c.cerrada
+                        ? " · Cerrada"
+                        : porCompletar
+                          ? " · Por completar"
+                          : " · Abierta"}
+                      {!propia
+                        ? ` · compartida (${c.clinicas?.nombre || "otra clínica"})`
+                        : ""}
+                      {porCompletar ? (
+                        <span className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+                          Completar
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="text-sm text-stone-600">{c.motivo || "Consulta"}</p>
+                    {c.diagnostico ? (
+                      <p className="mt-1 text-sm text-stone-700">Dx: {c.diagnostico}</p>
+                    ) : null}
+                    {c.tratamiento ? (
+                      <p className="text-sm text-stone-700">Tx: {c.tratamiento}</p>
+                    ) : null}
+                    {c.medicacion ? (
+                      <p className="text-sm text-stone-700">Med: {c.medicacion}</p>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className={porCompletar && propia ? primaryBtnClass : secondaryBtnClass}
+                    onClick={() => setSelectedConsultaId(c.id)}
+                  >
+                    {porCompletar && propia ? "Completar" : "Ver"}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

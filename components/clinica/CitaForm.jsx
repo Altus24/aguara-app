@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   cardClass,
@@ -10,6 +10,10 @@ import {
   primaryBtnClass,
   secondaryBtnClass,
 } from "@/components/clinica/ui";
+import MascotaRegistroFields, {
+  EMPTY_PET_FORM,
+  validateMascotaRegistroForm,
+} from "@/components/mascotas/MascotaRegistroFields";
 import {
   listarDisponibilidadVeterinario,
   validarDisponibilidadVeterinario,
@@ -19,6 +23,7 @@ import {
   CITA_ESTADOS,
   actualizarCita,
   crearCita,
+  crearPaciente,
   crearRecordatorio,
   crearVacuna,
 } from "@/lib/chapitas/clinicaOps";
@@ -27,6 +32,12 @@ import {
   listarServiciosDeVeterinario,
 } from "@/lib/chapitas/clinicas";
 import { confirmGuardar } from "@/lib/confirmAction";
+
+function etiquetaMascota(p) {
+  const especie = p?.especie ? ` · ${p.especie}` : "";
+  const raza = p?.raza ? ` · ${p.raza}` : "";
+  return `${p.nombre || "Mascota"}${especie}${raza}`;
+}
 
 const SLOT_MINUTES = 30;
 
@@ -72,6 +83,7 @@ export default function CitaForm({
   lockPaciente = false,
   onCancel,
   onSaved,
+  onPacientesChange,
 }) {
   const defaultStart = new Date(defaultDay || new Date());
   if (!initial?.inicio) {
@@ -84,9 +96,10 @@ export default function CitaForm({
     (initial?.inicio || !initial?.id
       ? addMinutesToLocalInput(inicioInicial, SLOT_MINUTES)
       : "");
+  const pacienteInicial = (pacientes || []).find((p) => p.id === initial?.paciente_id);
   const [form, setForm] = useState({
     paciente_id: initial?.paciente_id || "",
-    cliente_id: initial?.cliente_id || "",
+    cliente_id: initial?.cliente_id || pacienteInicial?.cliente_id || "",
     veterinario_id: initial?.veterinario_id || "",
     servicio_id: initial?.servicio_id || "",
     inicio: inicioInicial,
@@ -99,6 +112,7 @@ export default function CitaForm({
     vacuna_proxima_fecha: "",
     programar_recordatorio: true,
   });
+  const [pacientesLocal, setPacientesLocal] = useState(pacientes || []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [slotsLibres, setSlotsLibres] = useState([]);
@@ -106,6 +120,26 @@ export default function CitaForm({
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [disponibilidadMsg, setDisponibilidadMsg] = useState("");
   const [serviciosVet, setServiciosVet] = useState([]);
+  const [showNuevaMascota, setShowNuevaMascota] = useState(false);
+  const [petForm, setPetForm] = useState({ ...EMPTY_PET_FORM });
+  const [savingPet, setSavingPet] = useState(false);
+
+  useEffect(() => {
+    setPacientesLocal(pacientes || []);
+  }, [pacientes]);
+
+  const clientesOpts = useMemo(() => {
+    return [...(clientes || [])].sort((a, b) =>
+      String(a.nombre_completo || "").localeCompare(String(b.nombre_completo || ""), "es"),
+    );
+  }, [clientes]);
+
+  const mascotasDelCliente = useMemo(() => {
+    if (!form.cliente_id) return [];
+    return (pacientesLocal || []).filter(
+      (p) => (p.cliente_id || p.clinica_clientes?.id) === form.cliente_id,
+    );
+  }, [pacientesLocal, form.cliente_id]);
 
   const serviciosDisponibles =
     form.veterinario_id && serviciosVet.length > 0 ? serviciosVet : servicios;
@@ -203,13 +237,77 @@ export default function CitaForm({
     initial?.id,
   ]);
 
+  function onClienteChange(clienteId) {
+    setShowNuevaMascota(false);
+    setForm((f) => {
+      const sigueValido = (pacientesLocal || []).some(
+        (p) =>
+          p.id === f.paciente_id &&
+          (p.cliente_id || p.clinica_clientes?.id) === clienteId,
+      );
+      return {
+        ...f,
+        cliente_id: clienteId,
+        paciente_id: sigueValido ? f.paciente_id : "",
+      };
+    });
+  }
+
   function onPacienteChange(pacienteId) {
-    const paciente = pacientes.find((p) => p.id === pacienteId);
+    const paciente = pacientesLocal.find((p) => p.id === pacienteId);
     setForm((f) => ({
       ...f,
       paciente_id: pacienteId,
-      cliente_id: paciente?.cliente_id || f.cliente_id,
+      cliente_id: paciente?.cliente_id || paciente?.clinica_clientes?.id || f.cliente_id,
     }));
+  }
+
+  async function handleCrearMascota(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!form.cliente_id) {
+      setError("Elegí un cliente antes de crear la mascota.");
+      return;
+    }
+    const invalid = validateMascotaRegistroForm(petForm);
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
+    if (!(await confirmGuardar(`la nueva mascota “${petForm.nombre_mascota.trim()}”`))) return;
+    setSavingPet(true);
+    setError("");
+    try {
+      const creado = await crearPaciente(clinicaId, {
+        cliente_id: form.cliente_id,
+        nombre: petForm.nombre_mascota,
+        especie: petForm.especie,
+        raza: petForm.raza,
+        sexo: petForm.sexo,
+        castrado: petForm.castrado,
+        temperamento: petForm.temperamento,
+        fecha_nacimiento: petForm.fecha_nacimiento,
+        peso: petForm.peso,
+        nro_chip: petForm.nro_chip,
+        enfermedad: petForm.enfermedad,
+        medicacion: petForm.medicacion,
+        datos_adicionales: petForm.datos_adicionales,
+        clinica_cabecera_id: petForm.clinica_cabecera_id || null,
+        clinica_ref_nombre: petForm.clinica_ref_nombre,
+        clinica_ref_direccion: petForm.clinica_ref_direccion,
+        clinica_ref_telefono: petForm.clinica_ref_telefono,
+      });
+      const nextList = [creado, ...pacientesLocal.filter((p) => p.id !== creado.id)];
+      setPacientesLocal(nextList);
+      onPacientesChange?.(nextList);
+      setForm((f) => ({ ...f, paciente_id: creado.id }));
+      setShowNuevaMascota(false);
+      setPetForm({ ...EMPTY_PET_FORM });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo crear la mascota.");
+    } finally {
+      setSavingPet(false);
+    }
   }
 
   function onInicioChange(value) {
@@ -233,8 +331,28 @@ export default function CitaForm({
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (showNuevaMascota) {
+      setError("Guardá la nueva mascota para continuar con la cita.");
+      return;
+    }
+    if (!form.cliente_id) {
+      setError("Elegí el cliente.");
+      return;
+    }
+    if (!form.paciente_id && form.estado !== "lista_espera") {
+      setError("Elegí una mascota del cliente (o creá una nueva).");
+      return;
+    }
     if (form.estado !== "lista_espera" && !form.veterinario_id) {
       setError("Elegí un veterinario para validar su disponibilidad.");
+      return;
+    }
+    if (
+      form.estado !== "lista_espera" &&
+      disponibilidadMsg &&
+      (!horaSeleccionada || !slotsLibres.includes(horaSeleccionada))
+    ) {
+      setError(disponibilidadMsg);
       return;
     }
     if (esVacunacion && !form.vacuna_nombre.trim()) {
@@ -317,7 +435,12 @@ export default function CitaForm({
   }
 
   const pacienteFijo = lockPaciente
-    ? pacientes.find((p) => p.id === form.paciente_id)
+    ? pacientesLocal.find((p) => p.id === form.paciente_id)
+    : null;
+  const clienteFijo = lockPaciente
+    ? clientesOpts.find((c) => c.id === form.cliente_id) ||
+      pacienteFijo?.clinica_clientes ||
+      null
     : null;
 
   return (
@@ -330,54 +453,103 @@ export default function CitaForm({
             : "Nueva cita"}
       </h3>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Paciente" id="cita-pac">
+        <Field label="Cliente" id="cita-cli">
           {lockPaciente ? (
             <input
-              id="cita-pac"
+              id="cita-cli"
               disabled
               className={`${fieldClass} bg-stone-50 text-stone-600`}
-              value={
-                pacienteFijo
-                  ? `${pacienteFijo.nombre}${
-                      pacienteFijo.clinica_clientes?.nombre_completo
-                        ? ` (${pacienteFijo.clinica_clientes.nombre_completo})`
-                        : ""
-                    }`
-                  : "Paciente"
-              }
+              value={clienteFijo?.nombre_completo || "Cliente"}
             />
           ) : (
             <select
-              id="cita-pac"
+              id="cita-cli"
+              required
               className={fieldClass}
-              value={form.paciente_id}
-              onChange={(e) => onPacienteChange(e.target.value)}
+              value={form.cliente_id}
+              onChange={(e) => onClienteChange(e.target.value)}
             >
-              <option value="">Seleccionar…</option>
-              {pacientes.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nombre} ({p.clinica_clientes?.nombre_completo || "—"})
+              <option value="">Seleccionar cliente…</option>
+              {clientesOpts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre_completo}
+                  {c.telefono ? ` · ${c.telefono}` : ""}
                 </option>
               ))}
             </select>
           )}
         </Field>
-        <Field label="Cliente" id="cita-cli">
-          <select
-            id="cita-cli"
-            className={fieldClass}
-            value={form.cliente_id}
-            onChange={(e) => setForm((f) => ({ ...f, cliente_id: e.target.value }))}
-            disabled={lockPaciente}
-          >
-            <option value="">Seleccionar…</option>
-            {clientes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre_completo}
-              </option>
-            ))}
-          </select>
-        </Field>
+        <div className="space-y-2">
+          <Field label="Mascota" id="cita-pac">
+            {lockPaciente ? (
+              <input
+                id="cita-pac"
+                disabled
+                className={`${fieldClass} bg-stone-50 text-stone-600`}
+                value={pacienteFijo ? etiquetaMascota(pacienteFijo) : "Mascota"}
+              />
+            ) : (
+              <select
+                id="cita-pac"
+                required={!showNuevaMascota && form.estado !== "lista_espera"}
+                className={fieldClass}
+                value={form.paciente_id}
+                disabled={!form.cliente_id || showNuevaMascota}
+                onChange={(e) => onPacienteChange(e.target.value)}
+              >
+                <option value="">
+                  {!form.cliente_id
+                    ? "Primero elegí el cliente…"
+                    : mascotasDelCliente.length
+                      ? "Seleccionar mascota…"
+                      : "Este cliente no tiene mascotas cargadas"}
+                </option>
+                {mascotasDelCliente.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {etiquetaMascota(p)}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+          {!lockPaciente && !initial?.id ? (
+            <button
+              type="button"
+              className="text-sm font-medium text-aguara-orange hover:underline disabled:opacity-50"
+              disabled={!form.cliente_id}
+              onClick={() => {
+                setError("");
+                setShowNuevaMascota((v) => !v);
+              }}
+            >
+              {showNuevaMascota ? "Cancelar nueva mascota" : "+ Crear nueva mascota"}
+            </button>
+          ) : null}
+        </div>
+
+        {showNuevaMascota ? (
+          <div className="sm:col-span-2 space-y-3 rounded-xl border border-aguara-orange/25 bg-aguara-cream/30 p-3">
+            <p className="text-sm font-semibold text-aguara-ink">
+              Nueva mascota del cliente seleccionado
+            </p>
+            <MascotaRegistroFields
+              form={petForm}
+              onChange={(name, value) => setPetForm((f) => ({ ...f, [name]: value }))}
+              fieldClass={fieldClass}
+              fotoInputId="cita-nueva-mascota"
+              showTitle={false}
+            />
+            <button
+              type="button"
+              disabled={savingPet || !form.cliente_id}
+              className={secondaryBtnClass}
+              onClick={handleCrearMascota}
+            >
+              {savingPet ? "Creando mascota…" : "Guardar mascota y continuar"}
+            </button>
+          </div>
+        ) : null}
+
         <Field label="Veterinario *" id="cita-vet">
           <select
             id="cita-vet"
@@ -552,8 +724,21 @@ export default function CitaForm({
       ) : null}
 
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
+      {showNuevaMascota ? (
+        <p className="text-sm text-amber-800">
+          Guardá la nueva mascota para poder continuar con la cita.
+        </p>
+      ) : null}
       <div className="flex gap-2">
-        <button type="submit" disabled={saving} className={primaryBtnClass}>
+        <button
+          type="submit"
+          disabled={
+            saving ||
+            showNuevaMascota ||
+            (!lockPaciente && form.estado !== "lista_espera" && !form.paciente_id)
+          }
+          className={primaryBtnClass}
+        >
           {saving ? "Guardando…" : "Guardar"}
         </button>
         <button type="button" className={secondaryBtnClass} onClick={onCancel}>

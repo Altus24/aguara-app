@@ -271,6 +271,9 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
         medicacion: petForm.medicacion.trim() || null,
         datos_adicionales: petForm.datos_adicionales.trim() || null,
         clinica_cabecera_id: petForm.clinica_cabecera_id || null,
+        clinica_ref_nombre: petForm.clinica_ref_nombre?.trim() || null,
+        clinica_ref_direccion: petForm.clinica_ref_direccion?.trim() || null,
+        clinica_ref_telefono: petForm.clinica_ref_telefono?.trim() || null,
         foto_url: fotoUrl,
         nombre_dueno: tutorNombre,
         email_tutor: tutorEmail,
@@ -285,10 +288,13 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
         .select()
         .single();
 
-      if (
-        insertError &&
-        /temperamento|schema cache|does not exist/i.test(insertError.message || '')
-      ) {
+      const hasClinicaRef = Boolean(
+        mascotaPayload.clinica_ref_nombre ||
+          mascotaPayload.clinica_ref_direccion ||
+          mascotaPayload.clinica_ref_telefono,
+      );
+
+      if (insertError && /temperamento/i.test(insertError.message || '')) {
         delete mascotaPayload.temperamento;
         ({ data, error: insertError } = await supabase
           .from('mascotas')
@@ -297,10 +303,23 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
           .single());
       }
 
-      if (
-        insertError &&
-        /clinica_cabecera|schema cache|does not exist/i.test(insertError.message || '')
-      ) {
+      if (insertError && /clinica_ref_/i.test(insertError.message || '')) {
+        if (hasClinicaRef) {
+          throw new Error(
+            'Faltan las columnas de clínica de referencia. Ejecutá supabase/chapitas/38_mascota_clinica_referencia.sql en Supabase y recargá el schema.',
+          );
+        }
+        delete mascotaPayload.clinica_ref_nombre;
+        delete mascotaPayload.clinica_ref_direccion;
+        delete mascotaPayload.clinica_ref_telefono;
+        ({ data, error: insertError } = await supabase
+          .from('mascotas')
+          .insert(mascotaPayload)
+          .select()
+          .single());
+      }
+
+      if (insertError && /clinica_cabecera/i.test(insertError.message || '')) {
         delete mascotaPayload.clinica_cabecera_id;
         ({ data, error: insertError } = await supabase
           .from('mascotas')
@@ -309,10 +328,7 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
           .single());
       }
 
-      if (
-        insertError &&
-        /fecha_nacimiento|peso|schema cache|does not exist/i.test(insertError.message || '')
-      ) {
+      if (insertError && /fecha_nacimiento|peso/i.test(insertError.message || '')) {
         delete mascotaPayload.fecha_nacimiento;
         delete mascotaPayload.peso;
         ({ data, error: insertError } = await supabase

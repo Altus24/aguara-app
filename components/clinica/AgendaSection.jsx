@@ -130,6 +130,7 @@ export default function AgendaSection({
   const [servicios, setServicios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [selectedCita, setSelectedCita] = useState(null);
@@ -276,10 +277,17 @@ export default function AgendaSection({
 
   async function onEstado(id, estado) {
     try {
-      await cambiarEstadoCita(id, estado);
+      const result = await cambiarEstadoCita(id, estado);
       setSelectedCita(null);
+      setError("");
+      setMessage(
+        estado === "finalizada" && result?.consulta_creada?.id
+          ? "Cita realizada. Se creó la historia clínica pendiente de completar."
+          : "",
+      );
       await reload();
     } catch (err) {
+      setMessage("");
       setError(err instanceof Error ? err.message : "No se pudo cambiar el estado.");
     }
   }
@@ -577,6 +585,7 @@ export default function AgendaSection({
             servicios={servicios}
             initial={editing}
             defaultDay={defaultDay}
+            onPacientesChange={setPacientes}
             onCancel={() => {
               setShowForm(false);
               setEditing(null);
@@ -596,6 +605,7 @@ export default function AgendaSection({
           {error}
         </p>
       ) : null}
+      {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
 
       <div className={`${cardClass} overflow-hidden p-0 sm:p-0`}>
         <div className="flex items-center justify-between gap-3 border-b border-stone-200 px-4 py-3 sm:px-5">

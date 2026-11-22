@@ -6,6 +6,8 @@ import { formatDateTime } from '@/lib/dateFormat';
 import { generateChapitaQrSvg } from '@/lib/chapitas/chapitaQr';
 import {
   DEFAULT_QR_ESTILO,
+  NOMBRE_ESPACIO_PX_MAX,
+  NOMBRE_ESPACIO_PX_MIN,
   NOMBRE_TAMANO_PX_MAX,
   NOMBRE_TAMANO_PX_MIN,
   QR_ECC_OPTIONS,
@@ -270,8 +272,9 @@ export default function QrEstiloSection({ onSaved }) {
       <div>
         <h2 className="text-xl font-semibold text-blue-700">Personalizar QR</h2>
         <p className="text-sm text-gray-600">
-          Definí el tamaño físico en cm, guardá plantillas con nombre y usá la vista previa en
-          tiempo real antes de exportar.
+          Marca oficial: módulos rounded (#0F172A), ojos naranja (#E05A17), logo circular, ECC H y
+          tipografía Inter Bold con tracking amplio. Definí el tamaño en cm, guardá plantillas y
+          usá la vista previa antes de exportar.
         </p>
       </div>
 
@@ -548,6 +551,33 @@ export default function QrEstiloSection({ onSaved }) {
 
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-gray-700">
+                Espacio entre nombre y QR (px)
+              </span>
+              <input
+                type="range"
+                min={NOMBRE_ESPACIO_PX_MIN}
+                max={NOMBRE_ESPACIO_PX_MAX}
+                step={1}
+                value={form.nombre_espacio ?? DEFAULT_QR_ESTILO.nombre_espacio}
+                onChange={(e) => updateField('nombre_espacio', Number(e.target.value))}
+                className="w-full accent-blue-700"
+              />
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <span className="text-xs text-gray-500">{NOMBRE_ESPACIO_PX_MIN}</span>
+                <input
+                  type="number"
+                  min={NOMBRE_ESPACIO_PX_MIN}
+                  max={NOMBRE_ESPACIO_PX_MAX}
+                  value={form.nombre_espacio ?? DEFAULT_QR_ESTILO.nombre_espacio}
+                  onChange={(e) => updateField('nombre_espacio', Number(e.target.value))}
+                  className="w-24 rounded-md border border-gray-300 px-2 py-1 text-sm"
+                />
+                <span className="text-xs text-gray-500">{NOMBRE_ESPACIO_PX_MAX}</span>
+              </div>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-gray-700">
                 Tamaño del logo (% del QR)
               </span>
               <input
@@ -584,8 +614,44 @@ export default function QrEstiloSection({ onSaved }) {
                 value={form.texto_marca}
                 onChange={(e) => updateField('texto_marca', e.target.value)}
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                placeholder="AGUARÁ APP"
               />
             </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-gray-700">
+                Estilo de módulos
+              </span>
+              <select
+                value={form.modulos_estilo || 'rounded'}
+                onChange={(e) => updateField('modulos_estilo', e.target.value)}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              >
+                <option value="rounded">Rounded (oficial · Opción B)</option>
+                <option value="square">Cuadrados clásicos</option>
+              </select>
+            </label>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-gray-700">Color módulos</span>
+                <input
+                  type="color"
+                  value={form.color_modulos || '#0F172A'}
+                  onChange={(e) => updateField('color_modulos', e.target.value)}
+                  className="h-10 w-full cursor-pointer rounded-md border border-gray-300 bg-white p-1"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-gray-700">Color ojos</span>
+                <input
+                  type="color"
+                  value={form.color_ojos || '#E05A17'}
+                  onChange={(e) => updateField('color_ojos', e.target.value)}
+                  className="h-10 w-full cursor-pointer rounded-md border border-gray-300 bg-white p-1"
+                />
+              </label>
+            </div>
 
             <fieldset>
               <legend className="mb-2 text-sm font-medium text-gray-700">
@@ -680,7 +746,8 @@ export default function QrEstiloSection({ onSaved }) {
 
             <p className="mt-3 text-xs text-gray-500">
               {estiloNorm.tamano_cm}×{estiloNorm.tamano_cm} cm · nombre {form.nombre_posicion} ·
-              logo {estiloNorm.logo_porcentaje}% · ECC {form.complejidad}
+              gap {estiloNorm.nombre_espacio}px · logo {estiloNorm.logo_porcentaje}% · ECC{' '}
+              {form.complejidad}
               {previewLive ? ' · actualización en vivo' : ''}
               {previewLoading ? ' · regenerando…' : ''}
             </p>

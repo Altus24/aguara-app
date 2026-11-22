@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   cardClass,
@@ -11,15 +11,22 @@ import {
   primaryBtnClass,
   secondaryBtnClass,
 } from "@/components/clinica/ui";
+import MascotaRegistroFields, {
+  EMPTY_PET_FORM,
+  validateMascotaRegistroForm,
+} from "@/components/mascotas/MascotaRegistroFields";
 import {
   actualizarConsulta,
   cerrarConsulta,
+  consultaPendienteCompletar,
   crearArchivo,
   crearConsulta,
   crearDesparasitacion,
+  crearPaciente,
   crearRecordatorio,
   crearVacuna,
   listarArchivosPacienteCompletas,
+  listarClientes,
   listarConsultas,
   listarDesparasitacionesPacienteCompletas,
   listarPacientes,
@@ -30,10 +37,12 @@ import {
 } from "@/lib/chapitas/clinicaOps";
 import { crearTratamiento } from "@/lib/chapitas/mascotaPerfil";
 import { esVacunaVencida, vacunasParaEspecie } from "@/lib/chapitas/vacunas";
+import { confirmGuardar } from "@/lib/confirmAction";
 
 export default function HistoriasSection({ clinicaId }) {
   const [consultas, setConsultas] = useState([]);
   const [pacientes, setPacientes] = useState([]);
+  const [clientes, setClientes] = useState([]);
   const [vets, setVets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -44,13 +53,15 @@ export default function HistoriasSection({ clinicaId }) {
     setLoading(true);
     setError("");
     try {
-      const [c, p, v] = await Promise.all([
+      const [c, p, cl, v] = await Promise.all([
         listarConsultas(clinicaId),
         listarPacientes(clinicaId),
+        listarClientes(clinicaId),
         listarVeterinarios(clinicaId),
       ]);
       setConsultas(c);
       setPacientes(p);
+      setClientes(cl);
       setVets(v);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudieron cargar las historias.");
@@ -96,7 +107,9 @@ export default function HistoriasSection({ clinicaId }) {
         <ConsultaForm
           clinicaId={clinicaId}
           pacientes={pacientes}
+          clientes={clientes}
           vets={vets}
+          onPacientesChange={setPacientes}
           onSaved={async () => {
             setShowForm(false);
             await reload();
@@ -118,17 +131,25 @@ export default function HistoriasSection({ clinicaId }) {
           <p className="text-sm text-stone-500">Todavía no hay consultas.</p>
         ) : (
           <ul className="divide-y divide-stone-100">
-            {consultas.map((c) => (
+            {consultas.map((c) => {
+              const porCompletar = consultaPendienteCompletar(c);
+              const propia = !c.clinica_id || c.clinica_id === clinicaId;
+              return (
               <li key={c.id}>
                 <div className="flex flex-wrap items-center justify-between gap-3 py-3">
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-aguara-ink">
                       {c.clinica_pacientes?.nombre || "Paciente"} · {formatDateTime(c.fecha)}
+                      {porCompletar ? (
+                        <span className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+                          Completar
+                        </span>
+                      ) : null}
                     </p>
                     <p className="text-sm text-stone-500">
                       {c.motivo || "Consulta"} · {c.clinica_veterinarios?.nombre || "Sin vet"} ·{" "}
-                      {c.cerrada ? "Cerrada" : "Abierta"}
-                      {c.clinica_id && c.clinica_id !== clinicaId
+                      {c.cerrada ? "Cerrada" : porCompletar ? "Por completar" : "Abierta"}
+                      {!propia
                         ? ` · compartida (${c.clinicas?.nombre || "otra clínica"})`
                         : ""}
                     </p>
@@ -139,14 +160,15 @@ export default function HistoriasSection({ clinicaId }) {
                   </div>
                   <button
                     type="button"
-                    className={secondaryBtnClass}
+                    className={porCompletar && propia ? primaryBtnClass : secondaryBtnClass}
                     onClick={() => setSelectedId(c.id)}
                   >
-                    Ver
+                    {porCompletar && propia ? "Completar" : "Ver"}
                   </button>
                 </div>
               </li>
-            ))}
+            );
+            })}
           </ul>
         )}
       </div>
@@ -154,7 +176,28 @@ export default function HistoriasSection({ clinicaId }) {
   );
 }
 
-function ConsultaForm({ clinicaId, pacientes, vets, onSaved, onCancel, initial }) {
+function etiquetaMascota(p) {
+  const especie = p?.especie ? ` · ${p.especie}` : "";
+  const raza = p?.raza ? ` · ${p.raza}` : "";
+  return `${p.nombre || "Mascota"}${especie}${raza}`;
+}
+
+export function ConsultaForm({
+  clinicaId,
+  pacientes,
+  clientes = [],
+  vets,
+  onSaved,
+  onCancel,
+  onPacientesChange,
+  initial,
+  lockPaciente = false,
+}) {
+  const pacienteInicial = pacientes.find((p) => p.id === initial?.paciente_id);
+  const [clienteId, setClienteId] = useState(
+    initial?.cliente_id || pacienteInicial?.cliente_id || "",
+  );
+  const [pacientesLocal, setPacientesLocal] = useState(pacientes || []);
   const [form, setForm] = useState({
     paciente_id: initial?.paciente_id || "",
     veterinario_id: initial?.veterinario_id || "",
@@ -170,16 +213,114 @@ function ConsultaForm({ clinicaId, pacientes, vets, onSaved, onCancel, initial }
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [showNuevaMascota, setShowNuevaMascota] = useState(false);
+  const [petForm, setPetForm] = useState({ ...EMPTY_PET_FORM });
+  const [savingPet, setSavingPet] = useState(false);
+
+  useEffect(() => {
+    setPacientesLocal(pacientes || []);
+  }, [pacientes]);
+
+  const clientesOpts = useMemo(() => {
+    if (clientes?.length) {
+      return [...clientes].sort((a, b) =>
+        String(a.nombre_completo || "").localeCompare(String(b.nombre_completo || ""), "es"),
+      );
+    }
+    const map = new Map();
+    for (const p of pacientesLocal || []) {
+      const id = p.cliente_id || p.clinica_clientes?.id;
+      if (!id || map.has(id)) continue;
+      map.set(id, {
+        id,
+        nombre_completo:
+          p.clinica_clientes?.nombre_completo || p.cliente_nombre || "Cliente sin nombre",
+      });
+    }
+    return [...map.values()].sort((a, b) =>
+      String(a.nombre_completo).localeCompare(String(b.nombre_completo), "es"),
+    );
+  }, [clientes, pacientesLocal]);
+
+  const mascotasDelCliente = useMemo(() => {
+    if (!clienteId) return [];
+    return (pacientesLocal || []).filter(
+      (p) => (p.cliente_id || p.clinica_clientes?.id) === clienteId,
+    );
+  }, [pacientesLocal, clienteId]);
+
+  async function handleCrearMascota(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!clienteId) {
+      setError("Elegí un cliente antes de crear la mascota.");
+      return;
+    }
+    const invalid = validateMascotaRegistroForm(petForm);
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
+    if (!(await confirmGuardar(`la nueva mascota “${petForm.nombre_mascota.trim()}”`))) return;
+    setSavingPet(true);
+    setError("");
+    try {
+      const creado = await crearPaciente(clinicaId, {
+        cliente_id: clienteId,
+        nombre: petForm.nombre_mascota,
+        especie: petForm.especie,
+        raza: petForm.raza,
+        sexo: petForm.sexo,
+        castrado: petForm.castrado,
+        temperamento: petForm.temperamento,
+        fecha_nacimiento: petForm.fecha_nacimiento,
+        peso: petForm.peso,
+        nro_chip: petForm.nro_chip,
+        enfermedad: petForm.enfermedad,
+        medicacion: petForm.medicacion,
+        datos_adicionales: petForm.datos_adicionales,
+        clinica_cabecera_id: petForm.clinica_cabecera_id || null,
+        clinica_ref_nombre: petForm.clinica_ref_nombre,
+        clinica_ref_direccion: petForm.clinica_ref_direccion,
+        clinica_ref_telefono: petForm.clinica_ref_telefono,
+      });
+      const nextList = [creado, ...pacientesLocal.filter((p) => p.id !== creado.id)];
+      setPacientesLocal(nextList);
+      onPacientesChange?.(nextList);
+      setForm((f) => ({ ...f, paciente_id: creado.id }));
+      setShowNuevaMascota(false);
+      setPetForm({ ...EMPTY_PET_FORM });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo crear la mascota.");
+    } finally {
+      setSavingPet(false);
+    }
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (!clienteId) {
+      setError("Elegí el cliente.");
+      return;
+    }
+    if (!form.paciente_id) {
+      setError("Elegí una mascota del cliente (o creá una nueva).");
+      return;
+    }
+    if (
+      !(await confirmGuardar(
+        initial?.id ? "los cambios de la historia clínica" : "la nueva historia clínica",
+      ))
+    ) {
+      return;
+    }
     setSaving(true);
     setError("");
     try {
-      const paciente = pacientes.find((p) => p.id === form.paciente_id);
+      const paciente = pacientesLocal.find((p) => p.id === form.paciente_id);
       const payload = {
         ...form,
-        cliente_id: paciente?.cliente_id || null,
+        cliente_id: paciente?.cliente_id || clienteId || null,
       };
       if (initial?.id) {
         await actualizarConsulta(
@@ -215,7 +356,11 @@ function ConsultaForm({ clinicaId, pacientes, vets, onSaved, onCancel, initial }
   return (
     <form onSubmit={handleSubmit} className={`${cardClass} space-y-3`}>
       <h3 className="font-semibold text-aguara-ink">
-        {initial?.id ? "Editar historia clínica" : "Nueva consulta / evolución"}
+        {initial?.id
+          ? consultaPendienteCompletar(initial)
+            ? "Completar historia clínica"
+            : "Editar historia clínica"
+          : "Nueva consulta / evolución"}
       </h3>
       {initial?.id ? (
         <p className="text-sm text-stone-500">
@@ -226,23 +371,74 @@ function ConsultaForm({ clinicaId, pacientes, vets, onSaved, onCancel, initial }
         </p>
       ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Paciente" id="hc-pac">
+        <Field label="Cliente" id="hc-cliente">
           <select
-            id="hc-pac"
+            id="hc-cliente"
             required
-            disabled={Boolean(initial?.id)}
+            disabled={Boolean(initial?.id) || lockPaciente}
             className={fieldClass}
-            value={form.paciente_id}
-            onChange={(e) => setForm((f) => ({ ...f, paciente_id: e.target.value }))}
+            value={clienteId}
+            onChange={(e) => {
+              const next = e.target.value;
+              setClienteId(next);
+              setShowNuevaMascota(false);
+              setForm((f) => {
+                const sigueValido = (pacientesLocal || []).some(
+                  (p) =>
+                    p.id === f.paciente_id &&
+                    (p.cliente_id || p.clinica_clientes?.id) === next,
+                );
+                return { ...f, paciente_id: sigueValido ? f.paciente_id : "" };
+              });
+            }}
           >
-            <option value="">Seleccionar…</option>
-            {pacientes.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nombre}
+            <option value="">Seleccionar cliente…</option>
+            {clientesOpts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre_completo}
+                {c.telefono ? ` · ${c.telefono}` : ""}
               </option>
             ))}
           </select>
         </Field>
+        <div className="space-y-2">
+          <Field label="Mascota" id="hc-pac">
+            <select
+              id="hc-pac"
+              required={!showNuevaMascota}
+              disabled={Boolean(initial?.id) || lockPaciente || !clienteId || showNuevaMascota}
+              className={fieldClass}
+              value={form.paciente_id}
+              onChange={(e) => setForm((f) => ({ ...f, paciente_id: e.target.value }))}
+            >
+              <option value="">
+                {!clienteId
+                  ? "Primero elegí el cliente…"
+                  : mascotasDelCliente.length
+                    ? "Seleccionar mascota…"
+                    : "Este cliente no tiene mascotas cargadas"}
+              </option>
+              {mascotasDelCliente.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {etiquetaMascota(p)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {!initial?.id && !lockPaciente ? (
+            <button
+              type="button"
+              className="text-sm font-medium text-aguara-orange hover:underline disabled:opacity-50"
+              disabled={!clienteId}
+              onClick={() => {
+                setError("");
+                setShowNuevaMascota((v) => !v);
+              }}
+            >
+              {showNuevaMascota ? "Cancelar nueva mascota" : "+ Crear nueva mascota"}
+            </button>
+          ) : null}
+        </div>
         <Field label="Veterinario" id="hc-vet">
           <select
             id="hc-vet"
@@ -258,6 +454,30 @@ function ConsultaForm({ clinicaId, pacientes, vets, onSaved, onCancel, initial }
             ))}
           </select>
         </Field>
+
+        {showNuevaMascota ? (
+          <div className="sm:col-span-2 space-y-3 rounded-xl border border-aguara-orange/25 bg-aguara-cream/30 p-3">
+            <p className="text-sm font-semibold text-aguara-ink">
+              Nueva mascota del cliente seleccionado
+            </p>
+            <MascotaRegistroFields
+              form={petForm}
+              onChange={(name, value) => setPetForm((f) => ({ ...f, [name]: value }))}
+              fieldClass={fieldClass}
+              fotoInputId="hc-nueva-mascota"
+              showTitle={false}
+            />
+            <button
+              type="button"
+              disabled={savingPet || !clienteId}
+              className={secondaryBtnClass}
+              onClick={handleCrearMascota}
+            >
+              {savingPet ? "Creando mascota…" : "Guardar mascota y continuar"}
+            </button>
+          </div>
+        ) : null}
+
         <Field label="Motivo" id="hc-mot" className="sm:col-span-2">
           <input
             id="hc-mot"
@@ -342,8 +562,17 @@ function ConsultaForm({ clinicaId, pacientes, vets, onSaved, onCancel, initial }
         </Field>
       </div>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
+      {showNuevaMascota ? (
+        <p className="text-sm text-amber-800">
+          Guardá la nueva mascota para poder continuar con la historia clínica.
+        </p>
+      ) : null}
       <div className="flex gap-2">
-        <button type="submit" disabled={saving} className={primaryBtnClass}>
+        <button
+          type="submit"
+          disabled={saving || showNuevaMascota || !form.paciente_id}
+          className={primaryBtnClass}
+        >
           {saving ? "Guardando…" : "Guardar"}
         </button>
         <button type="button" className={secondaryBtnClass} onClick={onCancel}>
@@ -354,7 +583,7 @@ function ConsultaForm({ clinicaId, pacientes, vets, onSaved, onCancel, initial }
   );
 }
 
-function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
+export function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
   const [consulta, setConsulta] = useState(null);
   const [paciente, setPaciente] = useState(null);
   const [editing, setEditing] = useState(false);
@@ -465,8 +694,14 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
           </div>
           <div className="flex gap-2">
             {consulta.clinica_id === clinicaId ? (
-              <button type="button" className={secondaryBtnClass} onClick={() => setEditing(true)}>
-                Editar historia
+              <button
+                type="button"
+                className={
+                  consultaPendienteCompletar(consulta) ? primaryBtnClass : secondaryBtnClass
+                }
+                onClick={() => setEditing(true)}
+              >
+                {consultaPendienteCompletar(consulta) ? "Completar" : "Editar historia"}
               </button>
             ) : (
               <p className="text-xs text-amber-800">
@@ -475,6 +710,12 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
             )}
           </div>
         </div>
+        {consulta.clinica_id === clinicaId && consultaPendienteCompletar(consulta) ? (
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Historia creada al finalizar el turno. Completá el diagnóstico, tratamiento y demás
+            datos de la consulta.
+          </p>
+        ) : null}
         {consulta.clinica_id === clinicaId && consulta.cerrada ? (
           <p className="mt-3 text-xs text-amber-800">
             Esta consulta está cerrada/firmada. Podés editar el contenido; la firma original se
@@ -497,6 +738,9 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
                 ? ` · ${paciente.clinica_clientes.telefono}`
                 : ""}
             </p>
+            {paciente.enfermedad ? (
+              <p className="mt-1 text-amber-800">Enfermedad: {paciente.enfermedad}</p>
+            ) : null}
             {paciente.alergias ? (
               <p className="mt-1 text-amber-800">Alergias: {paciente.alergias}</p>
             ) : null}
@@ -514,7 +758,16 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
         ) : null}
 
         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-          <Item label="Estado" value={consulta.cerrada ? "Cerrada" : "Abierta"} />
+          <Item
+            label="Estado"
+            value={
+              consulta.cerrada
+                ? "Cerrada"
+                : consultaPendienteCompletar(consulta)
+                  ? "Por completar"
+                  : "Abierta"
+            }
+          />
           <Item label="Motivo" value={consulta.motivo} />
           <Item
             label="Veterinario"
@@ -726,19 +979,24 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
               </option>
             ))}
           </select>
-          <input
-            type="date"
-            className={fieldClass}
-            value={vacuna.fecha}
-            onChange={(e) => setVacuna((v) => ({ ...v, fecha: e.target.value }))}
-          />
-          <input
-            type="date"
-            className={fieldClass}
-            value={vacuna.proxima_fecha}
-            onChange={(e) => setVacuna((v) => ({ ...v, proxima_fecha: e.target.value }))}
-            title="Próxima"
-          />
+          <label className="block text-xs text-stone-500">
+            Fecha de aplicación
+            <input
+              type="date"
+              className={`${fieldClass} mt-1`}
+              value={vacuna.fecha}
+              onChange={(e) => setVacuna((v) => ({ ...v, fecha: e.target.value }))}
+            />
+          </label>
+          <label className="block text-xs text-stone-500">
+            Próxima dosis / vencimiento
+            <input
+              type="date"
+              className={`${fieldClass} mt-1`}
+              value={vacuna.proxima_fecha}
+              onChange={(e) => setVacuna((v) => ({ ...v, proxima_fecha: e.target.value }))}
+            />
+          </label>
           <input
             placeholder="Lote"
             className={fieldClass}
@@ -777,18 +1035,27 @@ function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged }) {
             value={desp.producto}
             onChange={(e) => setDesp((v) => ({ ...v, producto: e.target.value }))}
           />
-          <input
-            type="date"
-            className={fieldClass}
-            value={desp.fecha}
-            onChange={(e) => setDesp((v) => ({ ...v, fecha: e.target.value }))}
-          />
-          <input
-            type="date"
-            className={fieldClass}
-            value={desp.proxima_fecha}
-            onChange={(e) => setDesp((v) => ({ ...v, proxima_fecha: e.target.value }))}
-          />
+          <label className="block text-xs text-stone-500">
+            Fecha de aplicación
+            <input
+              type="date"
+              className={`${fieldClass} mt-1`}
+              value={desp.fecha}
+              onChange={(e) => setDesp((v) => ({ ...v, fecha: e.target.value }))}
+            />
+          </label>
+          <label className="block text-xs text-stone-500">
+            Fecha de caducidad
+            <input
+              type="date"
+              className={`${fieldClass} mt-1`}
+              value={desp.proxima_fecha}
+              onChange={(e) => setDesp((v) => ({ ...v, proxima_fecha: e.target.value }))}
+            />
+          </label>
+          <p className="text-xs text-stone-400">
+            Si cargás caducidad, aparece en los recordatorios del tutor.
+          </p>
           <button type="submit" className={primaryBtnClass} disabled={busy}>
             Agregar
           </button>

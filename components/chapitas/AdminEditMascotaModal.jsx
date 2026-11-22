@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { confirmGuardar } from '@/lib/confirmAction';
+import { razasParaEspecie } from '@/lib/chapitas/razas';
 import { supabase } from '@/lib/chapitas/supabaseClient';
 
 const ESPECIES = ['Perro', 'Gato'];
@@ -59,8 +60,18 @@ function AdminEditMascotaModal({ mascota, onClose, onSaved }) {
 
   const handleChange = (event) => {
     const { name, value } = event.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    setForm((prev) => {
+      if (name === 'especie') {
+        const nextRazas = razasParaEspecie(value);
+        const keepRaza = prev.raza && nextRazas.includes(prev.raza) ? prev.raza : '';
+        return { ...prev, especie: value, raza: keepRaza };
+      }
+      return { ...prev, [name]: value };
+    });
   };
+
+  const razas = razasParaEspecie(form.especie);
+  const razaFueraDeLista = Boolean(form.raza) && !razas.includes(form.raza);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -266,14 +277,23 @@ function AdminEditMascotaModal({ mascota, onClose, onSaved }) {
                 <label htmlFor="edit_raza" className="block text-sm font-medium text-gray-700 mb-1">
                   Raza
                 </label>
-                <input
+                <select
                   id="edit_raza"
                   name="raza"
-                  type="text"
                   value={form.raza}
                   onChange={handleChange}
                   className={fieldClass}
-                />
+                >
+                  <option value="">Seleccionar…</option>
+                  {razaFueraDeLista ? (
+                    <option value={form.raza}>{form.raza}</option>
+                  ) : null}
+                  {razas.map((raza) => (
+                    <option key={raza} value={raza}>
+                      {raza}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

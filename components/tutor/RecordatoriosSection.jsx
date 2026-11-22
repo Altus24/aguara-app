@@ -209,12 +209,13 @@ export default function RecordatoriosSection({ tutor }) {
           }))}
         />
         <ReminderCard
-          title="Desparasitaciones próximas"
-          empty="Sin desparasitaciones próximas."
+          title="Desparasitaciones (caducidad)"
+          empty="Sin desparasitaciones con caducidad desde hoy."
           items={desparasProx.map((d) => ({
             id: d.id,
             title: `${d.mascota_nombre || d.clinica_pacientes?.nombre || "Mascota"} · ${d.producto}`,
             date: d.proxima_fecha,
+            detail: "Caducidad / próxima dosis",
           }))}
         />
         <ReminderCard

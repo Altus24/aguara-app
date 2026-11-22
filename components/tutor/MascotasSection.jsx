@@ -338,6 +338,10 @@ export default function MascotasSection({ tutor }) {
                         <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
                           chapita
                         </span>
+                      ) : m.origen === "clinico" ? (
+                        <span className="ml-2 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-700">
+                          clínica
+                        </span>
                       ) : null}
                     </span>
                     <span className="mt-1 block text-sm text-stone-600">
