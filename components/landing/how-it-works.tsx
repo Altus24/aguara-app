@@ -14,12 +14,12 @@ const steps = [
   {
     icon: Link2,
     title: "Vinculá la mascota",
-    body: "Cada chapita guarda una mascota. Varias mascotas pueden quedar linkeadas al mismo tutor.",
+    body: "Cada chapita guarda una mascota. Varias pueden quedar linkeadas al mismo tutor.",
   },
   {
     icon: Smartphone,
     title: "Perfil listo",
-    body: "Quien escanee ve la ficha de esa mascota y el contacto del tutor, sin listar otras mascotas.",
+    body: "Quien escanea ve la ficha de esa mascota y el contacto del tutor, sin listar las otras.",
   },
 ];
 
@@ -29,7 +29,7 @@ export function HowItWorks() {
       <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
         <p className="text-sm font-medium text-aguara-orange">Cómo funciona</p>
         <h2 className="mt-3 max-w-2xl text-balance text-3xl font-semibold tracking-tight text-aguara-ink sm:text-4xl">
-          Del QR al registro: tutor y mascotas en la app.
+          Del QR al registro: tutor y mascotas en la app
         </h2>
         <p className="mt-4 max-w-2xl text-sm leading-6 text-stone-600">
           Un tutor, varias mascotas. La segunda chapita no vuelve a pedir todos los datos: buscás el

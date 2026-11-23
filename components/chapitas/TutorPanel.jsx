@@ -19,6 +19,7 @@ import {
 } from "@/lib/chapitas/tutorPortal";
 
 const TIPOS_CITA_NOTIF = new Set(["cita_confirmada", "cita_cancelada", "cita_reprogramada"]);
+const TIPOS_ESCANEO_NOTIF = new Set(["qr_escaneo"]);
 
 const NAV = [
   { id: "recordatorios", label: "Recordatorios" },
@@ -50,6 +51,7 @@ export default function TutorPanel() {
   const [pendientesPerfil, setPendientesPerfil] = useState(0);
   const [notifMensaje, setNotifMensaje] = useState("");
   const [notifCita, setNotifCita] = useState(null);
+  const [notifEscaneo, setNotifEscaneo] = useState(null);
   const [agendaPrefill, setAgendaPrefill] = useState(null);
 
   function selectTab(next) {
@@ -95,7 +97,11 @@ export default function TutorPanel() {
       setPendientesPerfil(sols.length + shares.length);
       const citaNotif = notifs.find((n) => TIPOS_CITA_NOTIF.has(n.tipo)) || null;
       setNotifCita(citaNotif);
-      const perfilNotifs = notifs.filter((n) => !TIPOS_CITA_NOTIF.has(n.tipo));
+      const escaneoNotif = notifs.find((n) => TIPOS_ESCANEO_NOTIF.has(n.tipo)) || null;
+      setNotifEscaneo(escaneoNotif);
+      const perfilNotifs = notifs.filter(
+        (n) => !TIPOS_CITA_NOTIF.has(n.tipo) && !TIPOS_ESCANEO_NOTIF.has(n.tipo),
+      );
       setNotifMensaje(
         perfilNotifs[0]?.mensaje ||
           shares[0]?.clinicas?.nombre ||
@@ -106,6 +112,7 @@ export default function TutorPanel() {
       setPendientesPerfil(0);
       setNotifMensaje("");
       setNotifCita(null);
+      setNotifEscaneo(null);
     }
   }
 
@@ -145,6 +152,32 @@ export default function TutorPanel() {
           Cerrar sesión
         </button>
       </div>
+
+      {notifEscaneo ? (
+        <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-emerald-950">{notifEscaneo.titulo}</p>
+              <p className="mt-1 text-sm text-emerald-900/80">{notifEscaneo.mensaje}</p>
+            </div>
+            <button
+              type="button"
+              className="rounded-full bg-aguara-orange px-4 py-2 text-sm font-medium text-white"
+              onClick={async () => {
+                selectTab("mascotas");
+                try {
+                  await marcarNotificacionesTutorLeidas(tutor.id, { soloTiposEscaneo: true });
+                  setNotifEscaneo(null);
+                } catch {
+                  /* ignore */
+                }
+              }}
+            >
+              Ver mis mascotas
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {notifCita ? (
         <div className="mt-6 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">

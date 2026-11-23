@@ -1030,9 +1030,6 @@ export default function AdminDashboard() {
                         </td>
                         <td className="p-2 font-mono text-xs">
                           {row.desde}–{row.hasta}
-                          <span className="block text-[10px] text-gray-400">
-                            bloque {row.desde}–{row.bloqueHasta}
-                          </span>
                         </td>
                         <td className="p-2">
                           <div className="flex flex-col gap-1 items-start">

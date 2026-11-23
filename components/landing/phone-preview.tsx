@@ -28,9 +28,13 @@ export function PhonePreview() {
 
         <div className="-mt-6 space-y-3 px-4 pb-5">
           <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-stone-200">
-            <div className="mx-auto grid size-20 place-items-center rounded-full bg-aguara-cream text-2xl font-semibold text-aguara-orange">
-              M
-            </div>
+            <Image
+              src="/landing/max-golden.jpg"
+              alt="Max, golden retriever"
+              width={80}
+              height={80}
+              className="mx-auto size-20 rounded-full object-cover ring-2 ring-aguara-cream"
+            />
             <p className="mt-3 text-center text-lg font-semibold text-aguara-ink">Max</p>
             <p className="text-center text-sm text-stone-500">Golden Retriever · 3 años</p>
             <button

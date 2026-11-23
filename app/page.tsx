@@ -1,8 +1,11 @@
+import { Audiences } from "@/components/landing/audiences";
 import { Benefits } from "@/components/landing/benefits";
+import { FinalCta } from "@/components/landing/final-cta";
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingHeader } from "@/components/landing/header";
 import { Hero } from "@/components/landing/hero";
 import { HowItWorks } from "@/components/landing/how-it-works";
+import { Trust } from "@/components/landing/trust";
 
 export default function HomePage() {
   return (
@@ -12,6 +15,9 @@ export default function HomePage() {
         <Hero />
         <HowItWorks />
         <Benefits />
+        <Audiences />
+        <Trust />
+        <FinalCta />
       </main>
       <LandingFooter />
     </div>

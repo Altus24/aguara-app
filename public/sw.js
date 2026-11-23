@@ -1,5 +1,5 @@
 /* Aguará PWA — service worker mínimo para instalación y actualizaciones. */
-const CACHE = "aguara-shell-v1";
+const CACHE = "aguara-shell-v2";
 const PRECACHE = ["/", "/icons/icon-192x192.png", "/icons/icon-512x512.png"];
 
 self.addEventListener("install", (event) => {
@@ -29,6 +29,9 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  // Nunca cachear el runtime de Next: evita HTML/JS desfasados (hydration mismatch).
+  if (url.pathname.startsWith("/_next/")) return;
+
   // Navegación: red primero, fallback a cache (modo offline básico).
   if (request.mode === "navigate") {
     event.respondWith(
@@ -43,10 +46,10 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Estáticos: cache primero.
+  // Solo iconos / assets estáticos de marca.
   if (
     url.pathname.startsWith("/icons/") ||
-    url.pathname.startsWith("/_next/static/") ||
+    url.pathname.startsWith("/landing/") ||
     /\.(png|jpg|jpeg|svg|webp|ico|woff2?)$/i.test(url.pathname)
   ) {
     event.respondWith(

@@ -7,12 +7,11 @@ import { LogoLink } from "@/components/logo";
 import { primaryButtonClass } from "@/components/ui/form";
 
 const NAV_LINKS = [
-  { href: "#inicio", label: "Inicio", external: false },
   { href: "#como-funciona", label: "Cómo funciona", external: false },
   { href: "#beneficios", label: "Beneficios", external: false },
-  { href: "/tutor/login", label: "Tutores", external: true },
-  { href: "/clinica/login", label: "Clínicas", external: true },
-  { href: "/admin", label: "Admin", external: true },
+  { href: "#registrar", label: "Registrar mascota", external: false },
+  { href: "/tutor/login", label: "Ingreso tutores", external: true },
+  { href: "/clinica/login", label: "Ingreso clínicas", external: true },
 ] as const;
 
 export function LandingHeader() {
@@ -36,7 +35,7 @@ export function LandingHeader() {
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
         <LogoLink />
 
-        <nav className="hidden items-center gap-8 text-sm text-stone-600 md:flex">
+        <nav className="hidden items-center gap-7 text-sm text-stone-600 lg:flex">
           {NAV_LINKS.map((item) =>
             item.external ? (
               <Link
@@ -63,11 +62,11 @@ export function LandingHeader() {
             href="/mascota/T1-001"
             className={`${primaryButtonClass} h-9 px-3 text-sm sm:px-4`}
           >
-            Probar QR
+            Conseguir Aguará
           </Link>
           <button
             type="button"
-            className="inline-flex size-10 items-center justify-center rounded-full border border-stone-200 bg-white text-aguara-ink md:hidden"
+            className="inline-flex size-10 items-center justify-center rounded-full border border-stone-200 bg-white text-aguara-ink lg:hidden"
             aria-expanded={open}
             aria-controls="mobile-nav"
             aria-label={open ? "Cerrar menú" : "Abrir menú"}
@@ -101,7 +100,7 @@ export function LandingHeader() {
       {open ? (
         <div
           id="mobile-nav"
-          className="border-t border-stone-200 bg-aguara-paper md:hidden"
+          className="border-t border-stone-200 bg-aguara-paper lg:hidden"
         >
           <nav className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-3 sm:px-6">
             {NAV_LINKS.map((item) =>
@@ -125,6 +124,20 @@ export function LandingHeader() {
                 </a>
               ),
             )}
+            <Link
+              href="/clinica/registro"
+              className="rounded-xl px-3 py-3 text-sm font-medium text-stone-700 hover:bg-aguara-cream/60 hover:text-aguara-ink"
+              onClick={() => setOpen(false)}
+            >
+              Registrar clínica
+            </Link>
+            <Link
+              href="/admin"
+              className="rounded-xl px-3 py-3 text-sm font-medium text-stone-700 hover:bg-aguara-cream/60 hover:text-aguara-ink"
+              onClick={() => setOpen(false)}
+            >
+              Panel admin
+            </Link>
           </nav>
         </div>
       ) : null}

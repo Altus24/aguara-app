@@ -23,6 +23,7 @@ import {
   eliminarTratamientoTutor,
   eliminarVacunaTutor,
   listarClinicas,
+  listarEscaneosMascota,
 } from "@/lib/chapitas/tutorPortal";
 import { esVacunaVencida, vacunasParaEspecie } from "@/lib/chapitas/vacunas";
 import { confirmEliminar, confirmGuardar } from "@/lib/confirmAction";
@@ -73,6 +74,7 @@ export default function TutorMascotaPerfil() {
   const [linkMsg, setLinkMsg] = useState("");
   const [uploadingFoto, setUploadingFoto] = useState(false);
   const [fotoMsg, setFotoMsg] = useState("");
+  const [escaneos, setEscaneos] = useState([]);
   const fotoInputRef = useRef(null);
   const sinChapita = isDigitalMascotaId(chapitaId);
 
@@ -89,15 +91,23 @@ export default function TutorMascotaPerfil() {
       const data = await cargarPerfilClinicoMascota(chapitaId);
       if (!data) {
         setPerfil(null);
+        setEscaneos([]);
         setError("No encontramos esa mascota.");
         return;
       }
       if (tutor?.id && data.tutor_id && data.tutor_id !== tutor.id) {
         setPerfil(null);
+        setEscaneos([]);
         setError("Esta mascota no pertenece a tu cuenta.");
         return;
       }
       setPerfil(data);
+      try {
+        const scans = await listarEscaneosMascota(data.id || chapitaId, { limit: 8 });
+        setEscaneos(scans);
+      } catch {
+        setEscaneos([]);
+      }
       setFechaNacimiento(data.fecha_nacimiento || "");
       setPeso(data.peso != null ? String(data.peso) : "");
       setCastrado(data.castrado === true ? "si" : data.castrado === false ? "no" : "ns");
@@ -109,6 +119,7 @@ export default function TutorMascotaPerfil() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar el perfil.");
       setPerfil(null);
+      setEscaneos([]);
     } finally {
       setLoading(false);
     }
@@ -437,6 +448,46 @@ export default function TutorMascotaPerfil() {
       {linkMsg ? <p className="mb-4 text-sm text-emerald-700">{linkMsg}</p> : null}
 
       <div className="space-y-5">
+        {!sinChapita ? (
+          <section className={cardClass}>
+            <h2 className="text-lg font-semibold text-aguara-ink">Escaneos del QR</h2>
+            <p className="mt-1 text-sm text-stone-500">
+              Zona aproximada por IP cuando alguien abre la chapita (sin pedir GPS).
+            </p>
+            {escaneos.length === 0 ? (
+              <p className="mt-3 text-sm text-stone-500">Todavía no hay escaneos registrados.</p>
+            ) : (
+              <ul className="mt-3 divide-y divide-stone-100">
+                {escaneos.map((scan) => (
+                  <li
+                    key={scan.id}
+                    className="flex flex-wrap items-start justify-between gap-2 py-3 text-sm"
+                  >
+                    <div>
+                      <p className="font-medium text-aguara-ink">
+                        {scan.ubicacion_label || "Zona no disponible"}
+                      </p>
+                      {scan.maps_url ? (
+                        <a
+                          href={scan.maps_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-aguara-orange underline"
+                        >
+                          Ver en el mapa
+                        </a>
+                      ) : null}
+                    </div>
+                    <p className="shrink-0 text-stone-600">
+                      {scan.creado_en ? formatDateTime(scan.creado_en) : "—"}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ) : null}
+
         <section className={cardClass}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>

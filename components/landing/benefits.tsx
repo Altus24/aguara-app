@@ -32,7 +32,7 @@ export function Benefits() {
       <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
         <p className="text-sm font-medium text-aguara-orange">Beneficios clave</p>
         <h2 className="mt-3 max-w-2xl text-balance text-3xl font-semibold tracking-tight text-aguara-ink sm:text-4xl">
-          Pensado para tutores y clínicas.
+          Pensado para tutores y clínicas
         </h2>
         <div className="mt-12 grid gap-5 sm:grid-cols-2">
           {benefits.map((benefit) => (
@@ -53,12 +53,15 @@ export function Benefits() {
           ))}
         </div>
 
-        <div className="mt-14 overflow-hidden rounded-3xl bg-aguara-ink px-6 py-10 text-white sm:px-10">
+        <div
+          id="registrar"
+          className="mt-14 scroll-mt-20 overflow-hidden rounded-3xl bg-aguara-ink px-6 py-10 text-white sm:px-10"
+        >
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-xl">
               <p className="text-sm font-medium text-aguara-cream">Registro por QR</p>
               <h3 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
-                Escaneás el tag y registrás tutor + mascota.
+                Escaneás el tag y registrás tutor + mascota
               </h3>
               <p className="mt-3 text-sm leading-6 text-white/70">
                 Los datos quedan en la app. Si ya tenés un tutor cargado, lo buscás y linkeás la

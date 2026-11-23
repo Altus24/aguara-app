@@ -24,8 +24,21 @@ export default function PwaProvider() {
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
+    // En desarrollo el SW cachea mal los chunks de Turbopack y rompe la hidratación.
+    if (process.env.NODE_ENV === "development") {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        regs.forEach((reg) => reg.unregister());
+      });
+      if (typeof caches !== "undefined") {
+        caches.keys().then((keys) => {
+          keys.filter((k) => k.startsWith("aguara-shell")).forEach((k) => caches.delete(k));
+        });
+      }
+      return;
+    }
+
     navigator.serviceWorker.register("/sw.js").catch(() => {
-      // Silencioso: en dev o sin HTTPS el SW puede fallar.
+      // Silencioso: sin HTTPS el SW puede fallar.
     });
 
     const onBeforeInstall = (event) => {

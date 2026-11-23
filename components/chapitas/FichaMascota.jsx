@@ -118,6 +118,32 @@ function FichaMascota() {
     }
   }, [mascota, chapitaId, canActivate]);
 
+  // Escaneo público: IP → ubicación aproximada → aviso al tutor (sin GPS del navegador).
+  useEffect(() => {
+    if (!mascota?.id) return;
+
+    const storageKey = `aguara_escaneo_${mascota.id}`;
+    try {
+      if (typeof window !== 'undefined' && sessionStorage.getItem(storageKey)) return;
+      sessionStorage.setItem(storageKey, '1');
+    } catch {
+      /* ignore */
+    }
+
+    (async () => {
+      try {
+        await fetch('/api/chapitas/escaneo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mascotaId: mascota.id }),
+          keepalive: true,
+        });
+      } catch {
+        /* el aviso al tutor no debe romper la ficha pública */
+      }
+    })();
+  }, [mascota?.id]);
+
   useEffect(() => {
     if (!chapitaId) {
       setLoading(false);
