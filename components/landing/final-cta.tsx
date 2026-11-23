@@ -19,7 +19,7 @@ export function FinalCta() {
             <Link href="/mascota/T1-001" className={primaryButtonClass}>
               Conseguir Aguará
             </Link>
-            <Link href="/tutor/login" className={secondaryButtonClass}>
+            <Link href="/tutor/registro" className={secondaryButtonClass}>
               Soy tutor
             </Link>
             <Link

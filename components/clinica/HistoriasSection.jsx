@@ -11,8 +11,9 @@ import {
   primaryBtnClass,
   secondaryBtnClass,
 } from "@/components/clinica/ui";
+import RegistrarClienteMascotaPanel from "@/components/clinica/RegistrarClienteMascotaPanel";
 import MascotaRegistroFields, {
-  EMPTY_PET_FORM,
+  emptyPetFormConCabecera,
   validateMascotaRegistroForm,
 } from "@/components/mascotas/MascotaRegistroFields";
 import {
@@ -35,6 +36,7 @@ import {
   obtenerConsulta,
   obtenerPaciente,
 } from "@/lib/chapitas/clinicaOps";
+import { readClinicSession } from "@/lib/chapitas/clinicSession";
 import { crearTratamiento } from "@/lib/chapitas/mascotaPerfil";
 import { esVacunaVencida, vacunasParaEspecie } from "@/lib/chapitas/vacunas";
 import { confirmGuardar } from "@/lib/confirmAction";
@@ -110,6 +112,7 @@ export default function HistoriasSection({ clinicaId }) {
           clientes={clientes}
           vets={vets}
           onPacientesChange={setPacientes}
+          onClientesChange={setClientes}
           onSaved={async () => {
             setShowForm(false);
             await reload();
@@ -190,6 +193,7 @@ export function ConsultaForm({
   onSaved,
   onCancel,
   onPacientesChange,
+  onClientesChange,
   initial,
   lockPaciente = false,
 }) {
@@ -198,6 +202,7 @@ export function ConsultaForm({
     initial?.cliente_id || pacienteInicial?.cliente_id || "",
   );
   const [pacientesLocal, setPacientesLocal] = useState(pacientes || []);
+  const [clientesLocal, setClientesLocal] = useState(clientes || []);
   const [form, setForm] = useState({
     paciente_id: initial?.paciente_id || "",
     veterinario_id: initial?.veterinario_id || "",
@@ -213,17 +218,29 @@ export function ConsultaForm({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [showNuevoCliente, setShowNuevoCliente] = useState(false);
   const [showNuevaMascota, setShowNuevaMascota] = useState(false);
-  const [petForm, setPetForm] = useState({ ...EMPTY_PET_FORM });
+  const [petForm, setPetForm] = useState(() => emptyPetFormConCabecera(clinicaId));
   const [savingPet, setSavingPet] = useState(false);
+  const clinicasCabecera = useMemo(() => {
+    const session = readClinicSession();
+    if (session?.id === clinicaId) {
+      return [{ id: session.id, nombre: session.nombre, ciudad: session.ciudad }];
+    }
+    return clinicaId ? [{ id: clinicaId, nombre: "Esta clínica" }] : [];
+  }, [clinicaId]);
 
   useEffect(() => {
     setPacientesLocal(pacientes || []);
   }, [pacientes]);
 
+  useEffect(() => {
+    setClientesLocal(clientes || []);
+  }, [clientes]);
+
   const clientesOpts = useMemo(() => {
-    if (clientes?.length) {
-      return [...clientes].sort((a, b) =>
+    if (clientesLocal?.length) {
+      return [...clientesLocal].sort((a, b) =>
         String(a.nombre_completo || "").localeCompare(String(b.nombre_completo || ""), "es"),
       );
     }
@@ -240,7 +257,7 @@ export function ConsultaForm({
     return [...map.values()].sort((a, b) =>
       String(a.nombre_completo).localeCompare(String(b.nombre_completo), "es"),
     );
-  }, [clientes, pacientesLocal]);
+  }, [clientesLocal, pacientesLocal]);
 
   const mascotasDelCliente = useMemo(() => {
     if (!clienteId) return [];
@@ -248,6 +265,20 @@ export function ConsultaForm({
       (p) => (p.cliente_id || p.clinica_clientes?.id) === clienteId,
     );
   }, [pacientesLocal, clienteId]);
+
+  function handleClienteMascotaCreado({ cliente, paciente }) {
+    const nextClientes = [cliente, ...clientesLocal.filter((c) => c.id !== cliente.id)];
+    setClientesLocal(nextClientes);
+    onClientesChange?.(nextClientes);
+    const nextPacientes = [paciente, ...pacientesLocal.filter((p) => p.id !== paciente.id)];
+    setPacientesLocal(nextPacientes);
+    onPacientesChange?.(nextPacientes);
+    setClienteId(cliente.id);
+    setForm((f) => ({ ...f, paciente_id: paciente.id }));
+    setShowNuevoCliente(false);
+    setShowNuevaMascota(false);
+    setError("");
+  }
 
   async function handleCrearMascota(event) {
     event.preventDefault();
@@ -279,7 +310,7 @@ export function ConsultaForm({
         enfermedad: petForm.enfermedad,
         medicacion: petForm.medicacion,
         datos_adicionales: petForm.datos_adicionales,
-        clinica_cabecera_id: petForm.clinica_cabecera_id || null,
+        clinica_cabecera_id: petForm.clinica_cabecera_id || clinicaId,
         clinica_ref_nombre: petForm.clinica_ref_nombre,
         clinica_ref_direccion: petForm.clinica_ref_direccion,
         clinica_ref_telefono: petForm.clinica_ref_telefono,
@@ -289,7 +320,7 @@ export function ConsultaForm({
       onPacientesChange?.(nextList);
       setForm((f) => ({ ...f, paciente_id: creado.id }));
       setShowNuevaMascota(false);
-      setPetForm({ ...EMPTY_PET_FORM });
+      setPetForm(emptyPetFormConCabecera(clinicaId));
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear la mascota.");
     } finally {
@@ -299,6 +330,14 @@ export function ConsultaForm({
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (showNuevoCliente) {
+      setError("Guardá el cliente nuevo (o cancelá) antes de continuar.");
+      return;
+    }
+    if (showNuevaMascota) {
+      setError("Guardá la nueva mascota (o cancelá) antes de continuar.");
+      return;
+    }
     if (!clienteId) {
       setError("Elegí el cliente.");
       return;
@@ -371,42 +410,64 @@ export function ConsultaForm({
         </p>
       ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Cliente" id="hc-cliente">
-          <select
-            id="hc-cliente"
-            required
-            disabled={Boolean(initial?.id) || lockPaciente}
-            className={fieldClass}
-            value={clienteId}
-            onChange={(e) => {
-              const next = e.target.value;
-              setClienteId(next);
-              setShowNuevaMascota(false);
-              setForm((f) => {
-                const sigueValido = (pacientesLocal || []).some(
-                  (p) =>
-                    p.id === f.paciente_id &&
-                    (p.cliente_id || p.clinica_clientes?.id) === next,
-                );
-                return { ...f, paciente_id: sigueValido ? f.paciente_id : "" };
-              });
-            }}
-          >
-            <option value="">Seleccionar cliente…</option>
-            {clientesOpts.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre_completo}
-                {c.telefono ? ` · ${c.telefono}` : ""}
-              </option>
-            ))}
-          </select>
-        </Field>
+        <div className="space-y-2">
+          <Field label="Cliente" id="hc-cliente">
+            <select
+              id="hc-cliente"
+              required={!showNuevoCliente}
+              disabled={Boolean(initial?.id) || lockPaciente || showNuevoCliente}
+              className={fieldClass}
+              value={clienteId}
+              onChange={(e) => {
+                const next = e.target.value;
+                setClienteId(next);
+                setShowNuevaMascota(false);
+                setShowNuevoCliente(false);
+                setForm((f) => {
+                  const sigueValido = (pacientesLocal || []).some(
+                    (p) =>
+                      p.id === f.paciente_id &&
+                      (p.cliente_id || p.clinica_clientes?.id) === next,
+                  );
+                  return { ...f, paciente_id: sigueValido ? f.paciente_id : "" };
+                });
+              }}
+            >
+              <option value="">Seleccionar cliente…</option>
+              {clientesOpts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre_completo}
+                  {c.telefono ? ` · ${c.telefono}` : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {!initial?.id && !lockPaciente ? (
+            <button
+              type="button"
+              className="text-sm font-medium text-aguara-orange hover:underline"
+              onClick={() => {
+                setError("");
+                setShowNuevaMascota(false);
+                setShowNuevoCliente((v) => !v);
+              }}
+            >
+              {showNuevoCliente ? "Cancelar registro" : "+ Registrar cliente"}
+            </button>
+          ) : null}
+        </div>
         <div className="space-y-2">
           <Field label="Mascota" id="hc-pac">
             <select
               id="hc-pac"
-              required={!showNuevaMascota}
-              disabled={Boolean(initial?.id) || lockPaciente || !clienteId || showNuevaMascota}
+              required={!showNuevaMascota && !showNuevoCliente}
+              disabled={
+                Boolean(initial?.id) ||
+                lockPaciente ||
+                !clienteId ||
+                showNuevaMascota ||
+                showNuevoCliente
+              }
               className={fieldClass}
               value={form.paciente_id}
               onChange={(e) => setForm((f) => ({ ...f, paciente_id: e.target.value }))}
@@ -429,9 +490,10 @@ export function ConsultaForm({
             <button
               type="button"
               className="text-sm font-medium text-aguara-orange hover:underline disabled:opacity-50"
-              disabled={!clienteId}
+              disabled={!clienteId || showNuevoCliente}
               onClick={() => {
                 setError("");
+                setShowNuevoCliente(false);
                 setShowNuevaMascota((v) => !v);
               }}
             >
@@ -455,6 +517,15 @@ export function ConsultaForm({
           </select>
         </Field>
 
+        {showNuevoCliente ? (
+          <RegistrarClienteMascotaPanel
+            clinicaId={clinicaId}
+            fotoInputId="hc-nuevo-cliente"
+            onCancel={() => setShowNuevoCliente(false)}
+            onCreated={handleClienteMascotaCreado}
+          />
+        ) : null}
+
         {showNuevaMascota ? (
           <div className="sm:col-span-2 space-y-3 rounded-xl border border-aguara-orange/25 bg-aguara-cream/30 p-3">
             <p className="text-sm font-semibold text-aguara-ink">
@@ -466,6 +537,7 @@ export function ConsultaForm({
               fieldClass={fieldClass}
               fotoInputId="hc-nueva-mascota"
               showTitle={false}
+              clinicas={clinicasCabecera}
             />
             <button
               type="button"
@@ -562,6 +634,11 @@ export function ConsultaForm({
         </Field>
       </div>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
+      {showNuevoCliente ? (
+        <p className="text-sm text-amber-800">
+          Guardá el cliente y la mascota para poder continuar con la historia clínica.
+        </p>
+      ) : null}
       {showNuevaMascota ? (
         <p className="text-sm text-amber-800">
           Guardá la nueva mascota para poder continuar con la historia clínica.
@@ -570,7 +647,7 @@ export function ConsultaForm({
       <div className="flex gap-2">
         <button
           type="submit"
-          disabled={saving || showNuevaMascota || !form.paciente_id}
+          disabled={saving || showNuevaMascota || showNuevoCliente || !form.paciente_id}
           className={primaryBtnClass}
         >
           {saving ? "Guardando…" : "Guardar"}

@@ -25,6 +25,11 @@ import {
 } from "@/lib/chapitas/especialidadesVet";
 import { confirmGuardar } from "@/lib/confirmAction";
 import {
+  ciudadesDeProvincia,
+  provinciaPorDefecto,
+  provinciasDisponibles,
+} from "@/lib/chapitas/ubicacionesAr";
+import {
   DIAS_SEMANA,
   actualizarClinica,
   actualizarServicio,
@@ -115,7 +120,7 @@ function Ubicacion({ clinica, onSaved }) {
     telefono: clinica.telefono || "",
     direccion: clinica.direccion || "",
     ciudad: clinica.ciudad || "",
-    provincia: clinica.provincia || "Mendoza",
+    provincia: clinica.provincia || provinciaPorDefecto(),
     descripcion: clinica.descripcion || "",
     maps_url: clinica.maps_url || "",
     permite_citas_tutor: clinica.permite_citas_tutor !== false,
@@ -123,6 +128,9 @@ function Ubicacion({ clinica, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  const provincias = useMemo(() => provinciasDisponibles(), []);
+  const ciudades = useMemo(() => ciudadesDeProvincia(form.provincia), [form.provincia]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -181,22 +189,48 @@ function Ubicacion({ clinica, onSaved }) {
             onChange={(e) => setForm((f) => ({ ...f, direccion: e.target.value }))}
           />
         </Field>
-        <Field label="Ciudad" id="cfg-ciudad">
-          <input
+        <Field label="Provincia" id="cfg-prov">
+          <select
+            id="cfg-prov"
+            required
+            className={fieldClass}
+            value={form.provincia}
+            onChange={(e) => {
+              const provincia = e.target.value;
+              const nextCiudades = ciudadesDeProvincia(provincia);
+              setForm((f) => ({
+                ...f,
+                provincia,
+                ciudad: nextCiudades.includes(f.ciudad) ? f.ciudad : "",
+              }));
+            }}
+          >
+            {provincias.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Ciudad / departamento" id="cfg-ciudad">
+          <select
             id="cfg-ciudad"
             required
             className={fieldClass}
             value={form.ciudad}
             onChange={(e) => setForm((f) => ({ ...f, ciudad: e.target.value }))}
-          />
-        </Field>
-        <Field label="Provincia" id="cfg-prov">
-          <input
-            id="cfg-prov"
-            className={fieldClass}
-            value={form.provincia}
-            onChange={(e) => setForm((f) => ({ ...f, provincia: e.target.value }))}
-          />
+            disabled={!ciudades.length}
+          >
+            <option value="">Seleccioná…</option>
+            {ciudades.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+            {form.ciudad && !ciudades.includes(form.ciudad) ? (
+              <option value={form.ciudad}>{form.ciudad} (actual)</option>
+            ) : null}
+          </select>
         </Field>
         <Field label="Google Maps" id="cfg-maps" className="sm:col-span-2">
           <input

@@ -586,6 +586,7 @@ export default function AgendaSection({
             initial={editing}
             defaultDay={defaultDay}
             onPacientesChange={setPacientes}
+            onClientesChange={setClientes}
             onCancel={() => {
               setShowForm(false);
               setEditing(null);

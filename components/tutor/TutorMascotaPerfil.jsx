@@ -29,8 +29,11 @@ import { esVacunaVencida, vacunasParaEspecie } from "@/lib/chapitas/vacunas";
 import { confirmEliminar, confirmGuardar } from "@/lib/confirmAction";
 import {
   CLINICA_AGREGAR_VALUE,
+  ESPECIES_MASCOTA,
+  SEXOS_MASCOTA,
   TEMPERAMENTOS_MASCOTA,
 } from "@/components/mascotas/MascotaRegistroFields";
+import { razasParaEspecie } from "@/lib/chapitas/razas";
 import {
   Field,
   cardClass,
@@ -51,10 +54,18 @@ export default function TutorMascotaPerfil() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
+  const [nombre, setNombre] = useState("");
+  const [especie, setEspecie] = useState("Perro");
+  const [raza, setRaza] = useState("");
+  const [sexo, setSexo] = useState("");
+  const [nroChip, setNroChip] = useState("");
   const [fechaNacimiento, setFechaNacimiento] = useState("");
   const [peso, setPeso] = useState("");
   const [castrado, setCastrado] = useState("");
   const [temperamento, setTemperamento] = useState("");
+  const [enfermedad, setEnfermedad] = useState("");
+  const [medicacion, setMedicacion] = useState("");
+  const [datosAdicionales, setDatosAdicionales] = useState("");
   const [clinicaCabeceraId, setClinicaCabeceraId] = useState("");
   const [clinicaRefNombre, setClinicaRefNombre] = useState("");
   const [clinicaRefDireccion, setClinicaRefDireccion] = useState("");
@@ -108,10 +119,18 @@ export default function TutorMascotaPerfil() {
       } catch {
         setEscaneos([]);
       }
+      setNombre(data.nombre || "");
+      setEspecie(data.especie || "Perro");
+      setRaza(data.raza || "");
+      setSexo(data.sexo || "");
+      setNroChip(data.nro_chip || "");
       setFechaNacimiento(data.fecha_nacimiento || "");
       setPeso(data.peso != null ? String(data.peso) : "");
       setCastrado(data.castrado === true ? "si" : data.castrado === false ? "no" : "ns");
       setTemperamento(data.temperamento || "");
+      setEnfermedad(data.enfermedad || "");
+      setMedicacion(data.medicacion || "");
+      setDatosAdicionales(data.datos_adicionales || "");
       setClinicaCabeceraId(data.clinica_cabecera_id || "");
       setClinicaRefNombre(data.clinica_ref_nombre || "");
       setClinicaRefDireccion(data.clinica_ref_direccion || "");
@@ -153,10 +172,18 @@ export default function TutorMascotaPerfil() {
     setClinicaRefMsg("");
     try {
       await actualizarDatosBasicosMascota(chapitaId, {
+        nombre_mascota: nombre,
+        especie,
+        raza,
+        sexo,
+        nro_chip: nroChip,
         fecha_nacimiento: fechaNacimiento,
         peso,
         castrado,
         temperamento,
+        enfermedad,
+        medicacion,
+        datos_adicionales: datosAdicionales,
         clinica_cabecera_id: clinicaCabeceraId || null,
         clinica_ref_nombre: clinicaRefNombre,
         clinica_ref_direccion: clinicaRefDireccion,
@@ -337,6 +364,33 @@ export default function TutorMascotaPerfil() {
     return rows.sort((a, b) => String(a.sort).localeCompare(String(b.sort)));
   }, [perfil, hoy]);
 
+  const razasDisponibles = useMemo(() => razasParaEspecie(especie || "Perro"), [especie]);
+  const razaFueraDeLista = Boolean(raza) && !razasDisponibles.includes(raza);
+
+  function cancelEditing() {
+    if (!perfil) {
+      setEditing(false);
+      return;
+    }
+    setNombre(perfil.nombre || "");
+    setEspecie(perfil.especie || "Perro");
+    setRaza(perfil.raza || "");
+    setSexo(perfil.sexo || "");
+    setNroChip(perfil.nro_chip || "");
+    setFechaNacimiento(perfil.fecha_nacimiento || "");
+    setPeso(perfil.peso != null ? String(perfil.peso) : "");
+    setCastrado(perfil.castrado === true ? "si" : perfil.castrado === false ? "no" : "ns");
+    setTemperamento(perfil.temperamento || "");
+    setEnfermedad(perfil.enfermedad || "");
+    setMedicacion(perfil.medicacion || "");
+    setDatosAdicionales(perfil.datos_adicionales || "");
+    setClinicaCabeceraId(perfil.clinica_cabecera_id || "");
+    setClinicaRefNombre(perfil.clinica_ref_nombre || "");
+    setClinicaRefDireccion(perfil.clinica_ref_direccion || "");
+    setClinicaRefTelefono(perfil.clinica_ref_telefono || "");
+    setEditing(false);
+  }
+
   if (authLoading || loading) {
     return (
       <section className="mx-auto max-w-3xl px-4 py-16 text-center text-sm text-stone-500">
@@ -378,65 +432,352 @@ export default function TutorMascotaPerfil() {
       </div>
 
       <div className={`${cardClass} mb-5`}>
-        <div className="flex items-start gap-4">
-          <div className="shrink-0">
-            {perfil.foto_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={perfil.foto_url}
-                alt=""
-                className="size-20 rounded-2xl object-cover"
-              />
-            ) : (
-              <span className="grid size-20 place-items-center rounded-2xl bg-aguara-cream text-2xl font-semibold text-aguara-orange">
-                {perfil.nombre?.charAt(0)?.toUpperCase() || "·"}
-              </span>
-            )}
-            <input
-              ref={fotoInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="hidden"
-              onChange={handleFotoChange}
-            />
-            <button
-              type="button"
-              disabled={uploadingFoto}
-              className="mt-2 w-full text-center text-xs font-medium text-aguara-orange underline disabled:opacity-60"
-              onClick={() => fotoInputRef.current?.click()}
-            >
-              {uploadingFoto ? "Subiendo…" : perfil.foto_url ? "Cambiar foto" : "Agregar foto"}
+        {editing ? (
+          <form onSubmit={handleSaveBasics} className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm font-medium text-aguara-orange">Mi mascota</p>
+              <button
+                type="button"
+                className="text-sm text-aguara-orange underline"
+                onClick={cancelEditing}
+              >
+                Cancelar
+              </button>
+            </div>
+            <div className="flex items-start gap-4">
+              <div className="shrink-0">
+                {perfil.foto_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={perfil.foto_url}
+                    alt=""
+                    className="size-20 rounded-2xl object-cover"
+                  />
+                ) : (
+                  <span className="grid size-20 place-items-center rounded-2xl bg-aguara-cream text-2xl font-semibold text-aguara-orange">
+                    {nombre?.charAt(0)?.toUpperCase() || "·"}
+                  </span>
+                )}
+                <input
+                  ref={fotoInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={handleFotoChange}
+                />
+                <button
+                  type="button"
+                  disabled={uploadingFoto}
+                  className="mt-2 w-full text-center text-xs font-medium text-aguara-orange underline disabled:opacity-60"
+                  onClick={() => fotoInputRef.current?.click()}
+                >
+                  {uploadingFoto ? "Subiendo…" : perfil.foto_url ? "Cambiar foto" : "Agregar foto"}
+                </button>
+              </div>
+              <div className="min-w-0 flex-1 grid gap-3 sm:grid-cols-2">
+                <label className="block text-sm sm:col-span-2">
+                  <span className="mb-1 block font-medium text-stone-700">Nombre</span>
+                  <input
+                    required
+                    value={nombre}
+                    onChange={(e) => setNombre(e.target.value)}
+                    className={fieldClass}
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-stone-700">Especie</span>
+                  <select
+                    required
+                    value={especie}
+                    onChange={(e) => {
+                      setEspecie(e.target.value);
+                      setRaza("");
+                    }}
+                    className={fieldClass}
+                  >
+                    {ESPECIES_MASCOTA.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-stone-700">Raza</span>
+                  <select
+                    value={raza}
+                    onChange={(e) => setRaza(e.target.value)}
+                    className={fieldClass}
+                  >
+                    <option value="">Sin especificar</option>
+                    {razasDisponibles.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                    {razaFueraDeLista ? <option value={raza}>{raza}</option> : null}
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-stone-700">Sexo</span>
+                  <select
+                    required
+                    value={sexo}
+                    onChange={(e) => setSexo(e.target.value)}
+                    className={fieldClass}
+                  >
+                    <option value="">Elegí una opción</option>
+                    {SEXOS_MASCOTA.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-stone-700">Nº de chip</span>
+                  <input
+                    value={nroChip}
+                    onChange={(e) => setNroChip(e.target.value)}
+                    className={fieldClass}
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-stone-700">Fecha de nacimiento</span>
+                  <input
+                    type="date"
+                    value={fechaNacimiento}
+                    onChange={(e) => setFechaNacimiento(e.target.value)}
+                    className={fieldClass}
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-stone-700">Peso actual (kg)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={peso}
+                    onChange={(e) => setPeso(e.target.value)}
+                    className={fieldClass}
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-stone-700">Castrado/a</span>
+                  <select
+                    required
+                    value={castrado}
+                    onChange={(e) => setCastrado(e.target.value)}
+                    className={fieldClass}
+                  >
+                    <option value="">Elegí una opción</option>
+                    <option value="si">Sí</option>
+                    <option value="no">No</option>
+                    <option value="ns">No lo sé</option>
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-stone-700">Temperamento</span>
+                  <select
+                    required
+                    value={temperamento}
+                    onChange={(e) => setTemperamento(e.target.value)}
+                    className={fieldClass}
+                  >
+                    <option value="">Elegí una opción</option>
+                    {TEMPERAMENTOS_MASCOTA.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm sm:col-span-2">
+                  <span className="mb-1 block font-medium text-stone-700">
+                    ¿Posee alguna enfermedad? ¿Cuál?
+                  </span>
+                  <input
+                    value={enfermedad}
+                    onChange={(e) => setEnfermedad(e.target.value)}
+                    className={fieldClass}
+                  />
+                </label>
+                <label className="block text-sm sm:col-span-2">
+                  <span className="mb-1 block font-medium text-stone-700">
+                    ¿Toma alguna medicación? ¿Cuál?
+                  </span>
+                  <input
+                    value={medicacion}
+                    onChange={(e) => setMedicacion(e.target.value)}
+                    className={fieldClass}
+                  />
+                </label>
+                <label className="block text-sm sm:col-span-2">
+                  <span className="mb-1 block font-medium text-stone-700">Datos adicionales</span>
+                  <textarea
+                    rows={3}
+                    value={datosAdicionales}
+                    onChange={(e) => setDatosAdicionales(e.target.value)}
+                    className={fieldClass}
+                  />
+                </label>
+                <label className="block text-sm sm:col-span-2">
+                  <span className="mb-1 block font-medium text-stone-700">
+                    Clínica de cabecera{" "}
+                    <span className="font-normal text-stone-500">(opcional)</span>
+                  </span>
+                  <select
+                    value={
+                      clinicaCabeceraId
+                        ? clinicaCabeceraId
+                        : clinicaRefNombre.trim()
+                          ? CLINICA_AGREGAR_VALUE
+                          : ""
+                    }
+                    onChange={(e) => handleClinicaSelectChange(e.target.value)}
+                    className={fieldClass}
+                  >
+                    {!clinicaCabeceraId && !clinicaRefNombre.trim() ? (
+                      <option value="">Elegí una clínica</option>
+                    ) : null}
+                    <option value={CLINICA_AGREGAR_VALUE}>Agregar clínica</option>
+                    {clinicas.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nombre}
+                        {c.ciudad ? ` · ${c.ciudad}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {clinicaRefNombre.trim() && !clinicaCabeceraId ? (
+                  <div className="sm:col-span-2 rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-2 text-sm text-stone-700">
+                    <p className="font-medium">{clinicaRefNombre}</p>
+                    {clinicaRefDireccion ? (
+                      <p className="text-stone-500">{clinicaRefDireccion}</p>
+                    ) : null}
+                    {clinicaRefTelefono ? (
+                      <p className="text-stone-500">Tel. {clinicaRefTelefono}</p>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="mt-2 text-sm font-medium text-orange-700 hover:underline"
+                      onClick={openClinicaRefModal}
+                    >
+                      Editar clínica de referencia
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            <button type="submit" disabled={saving} className={primaryBtnClass}>
+              {saving ? "Guardando…" : "Guardar cambios"}
             </button>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-aguara-orange">Mi mascota</p>
-            <h1 className="mt-1 text-3xl font-semibold tracking-tight text-aguara-ink">
-              {perfil.nombre}
-            </h1>
-            <p className="mt-2 text-sm text-stone-600">
-              {perfil.especie || "Mascota"}
-              {perfil.raza ? ` · ${perfil.raza}` : ""}
-              {perfil.sexo ? ` · ${perfil.sexo}` : ""}
-            </p>
-            {perfil.nro_chip ? (
-              <p className="mt-1 text-sm text-stone-500">Chip: {perfil.nro_chip}</p>
-            ) : null}
-            <p className="mt-1 text-sm text-stone-500">
-              Castrado/a:{" "}
-              {perfil.castrado === true ? "Sí" : perfil.castrado === false ? "No" : "No lo sé"}
-            </p>
-            {perfil.temperamento ? (
-              <p className="mt-1 text-sm text-stone-500">Temperamento: {perfil.temperamento}</p>
-            ) : null}
-            {sinChapita ? (
-              <p className="mt-2 inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900">
-                Sin chapita todavía
+          </form>
+        ) : (
+          <div className="flex items-start gap-4">
+            <div className="shrink-0">
+              {perfil.foto_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={perfil.foto_url}
+                  alt=""
+                  className="size-20 rounded-2xl object-cover"
+                />
+              ) : (
+                <span className="grid size-20 place-items-center rounded-2xl bg-aguara-cream text-2xl font-semibold text-aguara-orange">
+                  {perfil.nombre?.charAt(0)?.toUpperCase() || "·"}
+                </span>
+              )}
+              <input
+                ref={fotoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={handleFotoChange}
+              />
+              <button
+                type="button"
+                disabled={uploadingFoto}
+                className="mt-2 w-full text-center text-xs font-medium text-aguara-orange underline disabled:opacity-60"
+                onClick={() => fotoInputRef.current?.click()}
+              >
+                {uploadingFoto ? "Subiendo…" : perfil.foto_url ? "Cambiar foto" : "Agregar foto"}
+              </button>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-medium text-aguara-orange">Mi mascota</p>
+                <button
+                  type="button"
+                  className="text-sm text-aguara-orange underline"
+                  onClick={() => setEditing(true)}
+                >
+                  Editar
+                </button>
+              </div>
+              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-aguara-ink">
+                {perfil.nombre}
+              </h1>
+              <p className="mt-2 text-sm text-stone-600">
+                {[perfil.especie, perfil.raza, perfil.sexo].filter(Boolean).join(" · ") ||
+                  "Mascota"}
               </p>
-            ) : (
-              <p className="mt-1 text-xs text-stone-400">Chapita {perfil.chapitaId}</p>
-            )}
+              {perfil.nro_chip ? (
+                <p className="mt-1 text-sm text-stone-500">Chip: {perfil.nro_chip}</p>
+              ) : null}
+              {perfil.fecha_nacimiento ? (
+                <p className="mt-1 text-sm text-stone-500">
+                  Nacimiento: {formatDate(perfil.fecha_nacimiento)}
+                  {perfil.edad ? ` · Edad: ${perfil.edad}` : ""}
+                </p>
+              ) : perfil.edad ? (
+                <p className="mt-1 text-sm text-stone-500">Edad: {perfil.edad}</p>
+              ) : null}
+              {perfil.peso != null ? (
+                <p className="mt-1 text-sm text-stone-500">Peso: {perfil.peso} kg</p>
+              ) : null}
+              <p className="mt-1 text-sm text-stone-500">
+                Castrado/a:{" "}
+                {perfil.castrado === true
+                  ? "Sí"
+                  : perfil.castrado === false
+                    ? "No"
+                    : "No lo sé"}
+              </p>
+              {perfil.temperamento ? (
+                <p className="mt-1 text-sm text-stone-500">
+                  Temperamento: {perfil.temperamento}
+                </p>
+              ) : null}
+              {perfil.enfermedad ? (
+                <p className="mt-1 text-sm text-stone-500">Enfermedad: {perfil.enfermedad}</p>
+              ) : null}
+              {perfil.medicacion ? (
+                <p className="mt-1 text-sm text-stone-500">Medicación: {perfil.medicacion}</p>
+              ) : null}
+              {perfil.datos_adicionales ? (
+                <p className="mt-1 whitespace-pre-wrap text-sm text-stone-500">
+                  Datos adicionales: {perfil.datos_adicionales}
+                </p>
+              ) : null}
+              {perfil.clinica_cabecera?.nombre || perfil.clinica_ref_nombre ? (
+                <p className="mt-1 text-sm text-stone-500">
+                  Clínica: {perfil.clinica_cabecera?.nombre || perfil.clinica_ref_nombre}
+                  {perfil.clinica_cabecera?.ciudad
+                    ? ` · ${perfil.clinica_cabecera.ciudad}`
+                    : ""}
+                </p>
+              ) : null}
+              {sinChapita ? (
+                <p className="mt-2 inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900">
+                  Sin chapita todavía
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-stone-400">Chapita {perfil.chapitaId}</p>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {error ? (
@@ -549,185 +890,6 @@ export default function TutorMascotaPerfil() {
             </form>
           </section>
         ) : null}
-
-        <section className={cardClass}>
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-aguara-ink">Datos básicos</h2>
-            <button
-              type="button"
-              className="text-sm text-aguara-orange underline"
-              onClick={() => setEditing((v) => !v)}
-            >
-              {editing ? "Cancelar" : "Editar"}
-            </button>
-          </div>
-          {editing ? (
-            <form onSubmit={handleSaveBasics} className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-stone-700">Fecha de nacimiento</span>
-                <input
-                  type="date"
-                  value={fechaNacimiento}
-                  onChange={(e) => setFechaNacimiento(e.target.value)}
-                  className={fieldClass}
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-stone-700">Peso actual (kg)</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={peso}
-                  onChange={(e) => setPeso(e.target.value)}
-                  className={fieldClass}
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-stone-700">Castrado/a</span>
-                <select
-                  required
-                  value={castrado}
-                  onChange={(e) => setCastrado(e.target.value)}
-                  className={fieldClass}
-                >
-                  <option value="">Elegí una opción</option>
-                  <option value="si">Sí</option>
-                  <option value="no">No</option>
-                  <option value="ns">No lo sé</option>
-                </select>
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-stone-700">Temperamento</span>
-                <select
-                  required
-                  value={temperamento}
-                  onChange={(e) => setTemperamento(e.target.value)}
-                  className={fieldClass}
-                >
-                  <option value="">Elegí una opción</option>
-                  {TEMPERAMENTOS_MASCOTA.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-sm sm:col-span-2">
-                <span className="mb-1 block font-medium text-stone-700">
-                  Clínica de cabecera{" "}
-                  <span className="font-normal text-stone-500">(opcional)</span>
-                </span>
-                <select
-                  value={
-                    clinicaCabeceraId
-                      ? clinicaCabeceraId
-                      : clinicaRefNombre.trim()
-                        ? CLINICA_AGREGAR_VALUE
-                        : ""
-                  }
-                  onChange={(e) => handleClinicaSelectChange(e.target.value)}
-                  className={fieldClass}
-                >
-                  {!clinicaCabeceraId && !clinicaRefNombre.trim() ? (
-                    <option value="">Elegí una clínica</option>
-                  ) : null}
-                  <option value={CLINICA_AGREGAR_VALUE}>Agregar clínica</option>
-                  {clinicas.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nombre}
-                      {c.ciudad ? ` · ${c.ciudad}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {clinicaRefNombre.trim() && !clinicaCabeceraId ? (
-                <div className="sm:col-span-2 rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-2 text-sm text-stone-700">
-                  <p className="font-medium">{clinicaRefNombre}</p>
-                  {clinicaRefDireccion ? (
-                    <p className="text-stone-500">{clinicaRefDireccion}</p>
-                  ) : null}
-                  {clinicaRefTelefono ? (
-                    <p className="text-stone-500">Tel. {clinicaRefTelefono}</p>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="mt-2 text-sm font-medium text-orange-700 hover:underline"
-                    onClick={openClinicaRefModal}
-                  >
-                    Editar clínica de referencia
-                  </button>
-                </div>
-              ) : null}
-              <button type="submit" disabled={saving} className={`${primaryBtnClass} sm:col-span-2`}>
-                {saving ? "Guardando…" : "Guardar"}
-              </button>
-            </form>
-          ) : (
-            <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
-              <div>
-                <dt className="text-stone-500">Fecha de nacimiento</dt>
-                <dd className="font-medium text-aguara-ink">{formatDate(perfil.fecha_nacimiento)}</dd>
-              </div>
-              <div>
-                <dt className="text-stone-500">Edad</dt>
-                <dd className="font-medium text-aguara-ink">{perfil.edad || "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-stone-500">Peso actual</dt>
-                <dd className="font-medium text-aguara-ink">
-                  {perfil.peso != null ? `${perfil.peso} kg` : "—"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-stone-500">Castrado/a</dt>
-                <dd className="font-medium text-aguara-ink">
-                  {perfil.castrado === true
-                    ? "Sí"
-                    : perfil.castrado === false
-                      ? "No"
-                      : "No lo sé"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-stone-500">Temperamento</dt>
-                <dd className="font-medium text-aguara-ink">{perfil.temperamento || "—"}</dd>
-              </div>
-              <div className="sm:col-span-2 lg:col-span-3">
-                <dt className="text-stone-500">Clínica de cabecera</dt>
-                <dd className="font-medium text-aguara-ink">
-                  {perfil.clinica_cabecera?.nombre || perfil.clinica_ref_nombre ? (
-                    <div className="space-y-0.5">
-                      <p>
-                        {perfil.clinica_cabecera?.nombre || perfil.clinica_ref_nombre}
-                        {perfil.clinica_cabecera?.ciudad
-                          ? ` · ${perfil.clinica_cabecera.ciudad}`
-                          : ""}
-                      </p>
-                      {(perfil.clinica_cabecera?.direccion ||
-                        perfil.clinica_ref_direccion) && (
-                        <p className="font-normal text-stone-600">
-                          {perfil.clinica_cabecera?.direccion ||
-                            perfil.clinica_ref_direccion}
-                        </p>
-                      )}
-                      {(perfil.clinica_cabecera?.telefono ||
-                        perfil.clinica_ref_telefono) && (
-                        <p className="font-normal text-stone-600">
-                          Tel.{" "}
-                          {perfil.clinica_cabecera?.telefono ||
-                            perfil.clinica_ref_telefono}
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    "—"
-                  )}
-                </dd>
-              </div>
-            </dl>
-          )}
-        </section>
 
         <VacunasPerfilSection
           tutor={tutor}

@@ -2,9 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useClinicAuth } from "@/context/ClinicAuthContext";
+import {
+  ciudadesDeProvincia,
+  provinciaPorDefecto,
+  provinciasDisponibles,
+} from "@/lib/chapitas/ubicacionesAr";
 
 const fieldClass =
   "w-full rounded-md border border-stone-300 px-3 py-2 text-sm text-aguara-ink outline-none focus:border-aguara-orange focus:ring-4 focus:ring-aguara-orange/15";
@@ -16,7 +21,7 @@ const emptyForm = {
   telefono: "",
   direccion: "",
   ciudad: "",
-  provincia: "Mendoza",
+  provincia: provinciaPorDefecto(),
   descripcion: "",
 };
 
@@ -27,6 +32,9 @@ export default function ClinicaRegistro() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const provincias = useMemo(() => provinciasDisponibles(), []);
+  const ciudades = useMemo(() => ciudadesDeProvincia(form.provincia), [form.provincia]);
+
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
       router.replace("/clinica");
@@ -34,7 +42,20 @@ export default function ClinicaRegistro() {
   }, [authLoading, isAuthenticated, router]);
 
   function updateField(key) {
-    return (event) => setForm((prev) => ({ ...prev, [key]: event.target.value }));
+    return (event) => {
+      const value = event.target.value;
+      setForm((prev) => {
+        if (key === "provincia") {
+          const nextCiudades = ciudadesDeProvincia(value);
+          return {
+            ...prev,
+            provincia: value,
+            ciudad: nextCiudades.includes(prev.ciudad) ? prev.ciudad : "",
+          };
+        }
+        return { ...prev, [key]: value };
+      });
+    };
   }
 
   async function handleSubmit(event) {
@@ -143,30 +164,45 @@ export default function ClinicaRegistro() {
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label htmlFor="reg-ciudad" className="mb-1 block text-sm font-medium text-stone-800">
-              Ciudad
-            </label>
-            <input
-              id="reg-ciudad"
-              required
-              value={form.ciudad}
-              onChange={updateField("ciudad")}
-              className={fieldClass}
-            />
-          </div>
-          <div>
             <label
               htmlFor="reg-provincia"
               className="mb-1 block text-sm font-medium text-stone-800"
             >
               Provincia
             </label>
-            <input
+            <select
               id="reg-provincia"
+              required
               value={form.provincia}
               onChange={updateField("provincia")}
               className={fieldClass}
-            />
+            >
+              {provincias.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="reg-ciudad" className="mb-1 block text-sm font-medium text-stone-800">
+              Ciudad / departamento
+            </label>
+            <select
+              id="reg-ciudad"
+              required
+              value={form.ciudad}
+              onChange={updateField("ciudad")}
+              className={fieldClass}
+              disabled={!ciudades.length}
+            >
+              <option value="">Seleccioná…</option>
+              {ciudades.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
         <div>

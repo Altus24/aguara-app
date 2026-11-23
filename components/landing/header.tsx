@@ -11,6 +11,7 @@ const NAV_LINKS = [
   { href: "#beneficios", label: "Beneficios", external: false },
   { href: "#registrar", label: "Registrar mascota", external: false },
   { href: "/tutor/login", label: "Ingreso tutores", external: true },
+  { href: "/tutor/registro", label: "Registrar tutor", external: true },
   { href: "/clinica/login", label: "Ingreso clínicas", external: true },
 ] as const;
 

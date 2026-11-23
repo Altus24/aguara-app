@@ -8,7 +8,11 @@ import {
   readClinicSession,
   writeClinicSession,
 } from "@/lib/chapitas/clinicSession";
-import { crearClinica, obtenerClinicaPorEmail } from "@/lib/chapitas/clinicas";
+import {
+  crearClinica,
+  obtenerClinica,
+  obtenerClinicaPorEmail,
+} from "@/lib/chapitas/clinicas";
 
 const ClinicAuthContext = createContext(null);
 
@@ -17,8 +21,41 @@ export function ClinicAuthProvider({ children }) {
   const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
-    setClinica(readClinicSession());
-    setAuthLoading(false);
+    let cancelled = false;
+
+    async function hydrate() {
+      const cached = readClinicSession();
+      if (!cached?.id) {
+        if (!cancelled) {
+          setClinica(null);
+          setAuthLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const fresh = await obtenerClinica(cached.id);
+        if (cancelled) return;
+        if (!fresh) {
+          clearClinicSession();
+          setClinica(null);
+        } else {
+          writeClinicSession(fresh);
+          setClinica(fresh);
+        }
+      } catch {
+        if (cancelled) return;
+        // Red/API: mantener caché temporal; si la clínica no existe, obtenerClinica → null.
+        setClinica(cached);
+      } finally {
+        if (!cancelled) setAuthLoading(false);
+      }
+    }
+
+    hydrate();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const signIn = useCallback(async (email, password) => {

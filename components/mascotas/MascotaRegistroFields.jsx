@@ -34,6 +34,14 @@ export const EMPTY_PET_FORM = {
   clinica_ref_telefono: "",
 };
 
+/** Formulario vacío con clínica de cabecera preseleccionada (alta desde clínica). */
+export function emptyPetFormConCabecera(clinicaId) {
+  return {
+    ...EMPTY_PET_FORM,
+    clinica_cabecera_id: clinicaId || "",
+  };
+}
+
 export const CLINICA_AGREGAR_VALUE = "__agregar__";
 
 const defaultFieldClass =

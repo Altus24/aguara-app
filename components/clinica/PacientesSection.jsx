@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import CitaForm from "@/components/clinica/CitaForm";
 import { ConsultaForm, DetalleConsulta } from "@/components/clinica/HistoriasSection";
@@ -14,7 +14,7 @@ import {
   secondaryBtnClass,
 } from "@/components/clinica/ui";
 import MascotaRegistroFields, {
-  EMPTY_PET_FORM,
+  emptyPetFormConCabecera,
   validateMascotaRegistroForm,
 } from "@/components/mascotas/MascotaRegistroFields";
 import {
@@ -40,6 +40,7 @@ import {
   obtenerPaciente,
 } from "@/lib/chapitas/clinicaOps";
 import { listarServiciosActivos } from "@/lib/chapitas/clinicas";
+import { readClinicSession } from "@/lib/chapitas/clinicSession";
 import { supabase } from "@/lib/chapitas/supabaseClient";
 import { esVacunaVencida } from "@/lib/chapitas/vacunas";
 import { confirmGuardar } from "@/lib/confirmAction";
@@ -166,7 +167,7 @@ export default function PacientesSection({ clinicaId }) {
 }
 
 function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(() => ({
     cliente_id: "",
     chapita_codigo: "",
     nuevo_cliente_nombre: "",
@@ -174,14 +175,21 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
     nuevo_cliente_telefono: "",
     nuevo_cliente_telefono_secundario: "",
     nuevo_cliente_direccion: "",
-    ...EMPTY_PET_FORM,
-  });
+    ...emptyPetFormConCabecera(clinicaId),
+  }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [crearDueño, setCrearDueño] = useState(false);
   const [foto, setFoto] = useState(null);
   const [preview, setPreview] = useState(null);
   const previewRef = useRef(null);
+  const clinicasCabecera = useMemo(() => {
+    const session = readClinicSession();
+    if (session?.id === clinicaId) {
+      return [{ id: session.id, nombre: session.nombre, ciudad: session.ciudad }];
+    }
+    return clinicaId ? [{ id: clinicaId, nombre: "Esta clínica" }] : [];
+  }, [clinicaId]);
 
   useEffect(() => {
     return () => {
@@ -281,7 +289,7 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
         datos_adicionales: form.datos_adicionales,
         foto_url: fotoUrl,
         chapita_codigo: form.chapita_codigo,
-        clinica_cabecera_id: form.clinica_cabecera_id || null,
+        clinica_cabecera_id: form.clinica_cabecera_id || clinicaId,
         clinica_ref_nombre: form.clinica_ref_nombre,
         clinica_ref_direccion: form.clinica_ref_direccion,
         clinica_ref_telefono: form.clinica_ref_telefono,
@@ -401,6 +409,7 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
         onPhoto={handlePhoto}
         fieldClass={fieldClass}
         fotoInputId="np-foto"
+        clinicas={clinicasCabecera}
       />
 
       <Field label="Código chapita (opcional)" id="np-chapita">

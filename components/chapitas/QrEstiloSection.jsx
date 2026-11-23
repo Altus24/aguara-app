@@ -12,7 +12,9 @@ import {
   NOMBRE_TAMANO_PX_MIN,
   QR_ECC_OPTIONS,
   QR_NOMBRE_POSICIONES,
-  QR_TAMANO_OPTIONS,
+  QR_TAMANO_CM_MAX,
+  QR_TAMANO_CM_MIN,
+  QR_TAMANO_CM_STEP,
   deleteQrPlantilla,
   getActivePlantillaId,
   loadQrEstilo,
@@ -355,7 +357,8 @@ export default function QrEstiloSection({ onSaved }) {
                         ) : null}
                       </p>
                       <p className="text-sm text-gray-600">
-                        {e.tamano_cm}×{e.tamano_cm} cm · nombre {e.nombre_posicion} · logo{' '}
+                        {(e.tamano_ancho_cm ?? e.tamano_cm)}×
+                        {(e.tamano_alto_cm ?? e.tamano_cm)} cm · nombre {e.nombre_posicion} · logo{' '}
                         {e.logo_porcentaje}% · ECC {e.complejidad}
                         {e.texto_marca ? ` · “${e.texto_marca}”` : ''}
                       </p>
@@ -476,27 +479,69 @@ export default function QrEstiloSection({ onSaved }) {
             </div>
 
             <fieldset>
-              <legend className="mb-2 text-sm font-medium text-gray-700">Tamaño final</legend>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {QR_TAMANO_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => updateField('tamano_cm', opt.cm)}
-                    className={`rounded-md border px-3 py-2 text-left text-sm transition ${
-                      Number(form.tamano_cm) === opt.cm
-                        ? 'border-blue-600 bg-blue-50 text-blue-900'
-                        : 'border-gray-200 text-gray-800 hover:border-blue-200'
-                    }`}
-                  >
-                    <span className="block font-medium">{opt.label}</span>
-                    <span className="block text-xs text-gray-500">{opt.hint}</span>
-                  </button>
-                ))}
+              <legend className="mb-2 text-sm font-medium text-gray-700">
+                Tamaño final (ancho × alto)
+              </legend>
+              <div className="space-y-4">
+                <label className="block">
+                  <span className="mb-1 block text-sm font-medium text-gray-700">
+                    Ancho (cm)
+                  </span>
+                  <input
+                    type="range"
+                    min={QR_TAMANO_CM_MIN}
+                    max={QR_TAMANO_CM_MAX}
+                    step={QR_TAMANO_CM_STEP}
+                    value={form.tamano_ancho_cm ?? DEFAULT_QR_ESTILO.tamano_ancho_cm}
+                    onChange={(e) => updateField('tamano_ancho_cm', Number(e.target.value))}
+                    className="w-full accent-blue-700"
+                  />
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <span className="text-xs text-gray-500">{QR_TAMANO_CM_MIN}</span>
+                    <input
+                      type="number"
+                      min={QR_TAMANO_CM_MIN}
+                      max={QR_TAMANO_CM_MAX}
+                      step={QR_TAMANO_CM_STEP}
+                      value={form.tamano_ancho_cm ?? DEFAULT_QR_ESTILO.tamano_ancho_cm}
+                      onChange={(e) => updateField('tamano_ancho_cm', Number(e.target.value))}
+                      className="w-24 rounded-md border border-gray-300 px-2 py-1 text-sm"
+                    />
+                    <span className="text-xs text-gray-500">{QR_TAMANO_CM_MAX}</span>
+                  </div>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-sm font-medium text-gray-700">
+                    Alto (cm)
+                  </span>
+                  <input
+                    type="range"
+                    min={QR_TAMANO_CM_MIN}
+                    max={QR_TAMANO_CM_MAX}
+                    step={QR_TAMANO_CM_STEP}
+                    value={form.tamano_alto_cm ?? DEFAULT_QR_ESTILO.tamano_alto_cm}
+                    onChange={(e) => updateField('tamano_alto_cm', Number(e.target.value))}
+                    className="w-full accent-blue-700"
+                  />
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <span className="text-xs text-gray-500">{QR_TAMANO_CM_MIN}</span>
+                    <input
+                      type="number"
+                      min={QR_TAMANO_CM_MIN}
+                      max={QR_TAMANO_CM_MAX}
+                      step={QR_TAMANO_CM_STEP}
+                      value={form.tamano_alto_cm ?? DEFAULT_QR_ESTILO.tamano_alto_cm}
+                      onChange={(e) => updateField('tamano_alto_cm', Number(e.target.value))}
+                      className="w-24 rounded-md border border-gray-300 px-2 py-1 text-sm"
+                    />
+                    <span className="text-xs text-gray-500">{QR_TAMANO_CM_MAX}</span>
+                  </div>
+                </label>
               </div>
-              <p className="mt-1 text-xs text-gray-500">
-                {estiloNorm.tamano_cm} × {estiloNorm.tamano_cm} cm · ≈ {estiloNorm.tamano_final} px
-                a 300 DPI
+              <p className="mt-2 text-xs text-gray-500">
+                {estiloNorm.tamano_ancho_cm} × {estiloNorm.tamano_alto_cm} cm · ≈{' '}
+                {estiloNorm.tamano_final_w} × {estiloNorm.tamano_final_h} px a 300 DPI.
+                El QR se estira para llenar ese espacio (puede quedar más ancho que alto).
               </p>
             </fieldset>
 
@@ -745,9 +790,9 @@ export default function QrEstiloSection({ onSaved }) {
             )}
 
             <p className="mt-3 text-xs text-gray-500">
-              {estiloNorm.tamano_cm}×{estiloNorm.tamano_cm} cm · nombre {form.nombre_posicion} ·
-              gap {estiloNorm.nombre_espacio}px · logo {estiloNorm.logo_porcentaje}% · ECC{' '}
-              {form.complejidad}
+              {estiloNorm.tamano_ancho_cm}×{estiloNorm.tamano_alto_cm} cm · nombre{' '}
+              {form.nombre_posicion} · gap {estiloNorm.nombre_espacio}px · logo{' '}
+              {estiloNorm.logo_porcentaje}% · ECC {form.complejidad}
               {previewLive ? ' · actualización en vivo' : ''}
               {previewLoading ? ' · regenerando…' : ''}
             </p>

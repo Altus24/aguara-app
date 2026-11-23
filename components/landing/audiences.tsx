@@ -50,8 +50,8 @@ export function Audiences() {
             Todo lo que necesitás para cuidarla (y recuperarla)
           </h2>
           <FeatureList items={tutorItems} />
-          <Link href="/tutor/login" className={`${primaryButtonClass} mt-8`}>
-            Soy tutor · Activá tu chapita
+          <Link href="/tutor/registro" className={`${primaryButtonClass} mt-8`}>
+            Soy tutor · Creá tu cuenta
           </Link>
         </article>
 

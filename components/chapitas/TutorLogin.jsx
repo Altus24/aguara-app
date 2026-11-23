@@ -110,8 +110,20 @@ export default function TutorLogin() {
 
       <p className="mt-6 text-center text-sm text-stone-500">
         ¿Todavía no tenés cuenta?{" "}
-        <Link href="/mascota/T1-001" className="font-medium text-aguara-orange hover:text-aguara-orange-deep">
-          Activá una chapita
+        <Link
+          href="/tutor/registro"
+          className="font-medium text-aguara-orange hover:text-aguara-orange-deep"
+        >
+          Registrate
+        </Link>
+      </p>
+      <p className="mt-2 text-center text-sm text-stone-500">
+        ¿Tenés chapita?{" "}
+        <Link
+          href="/mascota/T1-001"
+          className="font-medium text-aguara-orange hover:text-aguara-orange-deep"
+        >
+          Activá el QR
         </Link>
       </p>
       <p className="mt-3 text-center">

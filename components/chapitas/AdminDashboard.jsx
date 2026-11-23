@@ -47,6 +47,11 @@ import {
   crearClinica,
   eliminarClinica,
 } from '@/lib/chapitas/clinicas';
+import {
+  ciudadesDeProvincia,
+  provinciaPorDefecto,
+  provinciasDisponibles,
+} from '@/lib/chapitas/ubicacionesAr';
 import AdminEditMascotaModal from './AdminEditMascotaModal';
 import QrEstiloSection from './QrEstiloSection';
 
@@ -60,7 +65,7 @@ const EMPTY_CLINICA_FORM = {
   telefono: '',
   direccion: '',
   ciudad: '',
-  provincia: 'Mendoza',
+  provincia: provinciaPorDefecto(),
   descripcion: '',
 };
 
@@ -274,7 +279,7 @@ export default function AdminDashboard() {
       telefono: clinica.telefono || '',
       direccion: clinica.direccion || '',
       ciudad: clinica.ciudad || '',
-      provincia: clinica.provincia || 'Mendoza',
+      provincia: clinica.provincia || provinciaPorDefecto(),
       descripcion: clinica.descripcion || '',
     });
     setShowClinicaForm(true);
@@ -406,7 +411,10 @@ export default function AdminDashboard() {
     const config = getTiradaConfig(tirada);
     const estilo = estiloForTirada(tirada);
     const cantidad = config.cantidad || CHAPITAS_PER_TIRADA;
-    const grid = getA4QrGrid(estilo.tamano_cm);
+    const grid = getA4QrGrid({
+      anchoCm: estilo.tamano_ancho_cm,
+      altoCm: estilo.tamano_alto_cm,
+    });
     setMessage('');
     setSuccessMessage('');
     setZipProgress({ done: 0, total: cantidad, tirada, phase: 'pdf' });
@@ -437,7 +445,10 @@ export default function AdminDashboard() {
     const config = getTiradaConfig(tirada);
     const estilo = estiloForTirada(tirada);
     const cantidad = config.cantidad || CHAPITAS_PER_TIRADA;
-    const grid = getA4QrGrid(estilo.tamano_cm);
+    const grid = getA4QrGrid({
+      anchoCm: estilo.tamano_ancho_cm,
+      altoCm: estilo.tamano_alto_cm,
+    });
     const hojasEstimadas = Math.max(1, Math.ceil(cantidad / grid.perPage));
     setMessage('');
     setSuccessMessage('');
@@ -712,25 +723,55 @@ export default function AdminDashboard() {
                       />
                     </label>
                     <label className="block text-sm">
-                      <span className="mb-1 block font-medium text-gray-700">Ciudad</span>
-                      <input
+                      <span className="mb-1 block font-medium text-gray-700">Provincia</span>
+                      <select
+                        required
+                        value={clinicaForm.provincia}
+                        onChange={(e) => {
+                          const provincia = e.target.value;
+                          const nextCiudades = ciudadesDeProvincia(provincia);
+                          setClinicaForm((f) => ({
+                            ...f,
+                            provincia,
+                            ciudad: nextCiudades.includes(f.ciudad) ? f.ciudad : '',
+                          }));
+                        }}
+                        className="w-full rounded-md border border-gray-300 px-3 py-2"
+                      >
+                        {provinciasDisponibles().map((p) => (
+                          <option key={p} value={p}>
+                            {p}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block text-sm">
+                      <span className="mb-1 block font-medium text-gray-700">
+                        Ciudad / departamento
+                      </span>
+                      <select
                         required
                         value={clinicaForm.ciudad}
                         onChange={(e) =>
                           setClinicaForm((f) => ({ ...f, ciudad: e.target.value }))
                         }
                         className="w-full rounded-md border border-gray-300 px-3 py-2"
-                      />
-                    </label>
-                    <label className="block text-sm">
-                      <span className="mb-1 block font-medium text-gray-700">Provincia</span>
-                      <input
-                        value={clinicaForm.provincia}
-                        onChange={(e) =>
-                          setClinicaForm((f) => ({ ...f, provincia: e.target.value }))
-                        }
-                        className="w-full rounded-md border border-gray-300 px-3 py-2"
-                      />
+                      >
+                        <option value="">Seleccioná…</option>
+                        {ciudadesDeProvincia(clinicaForm.provincia).map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                        {clinicaForm.ciudad &&
+                        !ciudadesDeProvincia(clinicaForm.provincia).includes(
+                          clinicaForm.ciudad,
+                        ) ? (
+                          <option value={clinicaForm.ciudad}>
+                            {clinicaForm.ciudad} (actual)
+                          </option>
+                        ) : null}
+                      </select>
                     </label>
                     <label className="block text-sm sm:col-span-2">
                       <span className="mb-1 block font-medium text-gray-700">
@@ -964,7 +1005,9 @@ export default function AdminDashboard() {
                     <option value="">Estilo activo (Personalizar QR)</option>
                     {qrPlantillas.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.nombre} · {p.estilo.tamano_cm} cm · ECC {p.estilo.complejidad}
+                        {p.nombre} · {p.estilo.tamano_ancho_cm ?? p.estilo.tamano_cm}×
+                        {p.estilo.tamano_alto_cm ?? p.estilo.tamano_cm} cm · ECC{' '}
+                        {p.estilo.complejidad}
                       </option>
                     ))}
                   </select>

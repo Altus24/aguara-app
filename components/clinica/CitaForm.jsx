@@ -10,8 +10,9 @@ import {
   primaryBtnClass,
   secondaryBtnClass,
 } from "@/components/clinica/ui";
+import RegistrarClienteMascotaPanel from "@/components/clinica/RegistrarClienteMascotaPanel";
 import MascotaRegistroFields, {
-  EMPTY_PET_FORM,
+  emptyPetFormConCabecera,
   validateMascotaRegistroForm,
 } from "@/components/mascotas/MascotaRegistroFields";
 import {
@@ -31,6 +32,7 @@ import {
   esServicioVacunacion,
   listarServiciosDeVeterinario,
 } from "@/lib/chapitas/clinicas";
+import { readClinicSession } from "@/lib/chapitas/clinicSession";
 import { confirmGuardar } from "@/lib/confirmAction";
 
 function etiquetaMascota(p) {
@@ -84,6 +86,7 @@ export default function CitaForm({
   onCancel,
   onSaved,
   onPacientesChange,
+  onClientesChange,
 }) {
   const defaultStart = new Date(defaultDay || new Date());
   if (!initial?.inicio) {
@@ -113,26 +116,39 @@ export default function CitaForm({
     programar_recordatorio: true,
   });
   const [pacientesLocal, setPacientesLocal] = useState(pacientes || []);
+  const [clientesLocal, setClientesLocal] = useState(clientes || []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [showNuevoCliente, setShowNuevoCliente] = useState(false);
   const [slotsLibres, setSlotsLibres] = useState([]);
   const [slotsDia, setSlotsDia] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [disponibilidadMsg, setDisponibilidadMsg] = useState("");
   const [serviciosVet, setServiciosVet] = useState([]);
   const [showNuevaMascota, setShowNuevaMascota] = useState(false);
-  const [petForm, setPetForm] = useState({ ...EMPTY_PET_FORM });
+  const [petForm, setPetForm] = useState(() => emptyPetFormConCabecera(clinicaId));
   const [savingPet, setSavingPet] = useState(false);
+  const clinicasCabecera = useMemo(() => {
+    const session = readClinicSession();
+    if (session?.id === clinicaId) {
+      return [{ id: session.id, nombre: session.nombre, ciudad: session.ciudad }];
+    }
+    return clinicaId ? [{ id: clinicaId, nombre: "Esta clínica" }] : [];
+  }, [clinicaId]);
 
   useEffect(() => {
     setPacientesLocal(pacientes || []);
   }, [pacientes]);
 
+  useEffect(() => {
+    setClientesLocal(clientes || []);
+  }, [clientes]);
+
   const clientesOpts = useMemo(() => {
-    return [...(clientes || [])].sort((a, b) =>
+    return [...(clientesLocal || [])].sort((a, b) =>
       String(a.nombre_completo || "").localeCompare(String(b.nombre_completo || ""), "es"),
     );
-  }, [clientes]);
+  }, [clientesLocal]);
 
   const mascotasDelCliente = useMemo(() => {
     if (!form.cliente_id) return [];
@@ -239,6 +255,7 @@ export default function CitaForm({
 
   function onClienteChange(clienteId) {
     setShowNuevaMascota(false);
+    setShowNuevoCliente(false);
     setForm((f) => {
       const sigueValido = (pacientesLocal || []).some(
         (p) =>
@@ -251,6 +268,23 @@ export default function CitaForm({
         paciente_id: sigueValido ? f.paciente_id : "",
       };
     });
+  }
+
+  function handleClienteMascotaCreado({ cliente, paciente }) {
+    const nextClientes = [cliente, ...clientesLocal.filter((c) => c.id !== cliente.id)];
+    setClientesLocal(nextClientes);
+    onClientesChange?.(nextClientes);
+    const nextPacientes = [paciente, ...pacientesLocal.filter((p) => p.id !== paciente.id)];
+    setPacientesLocal(nextPacientes);
+    onPacientesChange?.(nextPacientes);
+    setForm((f) => ({
+      ...f,
+      cliente_id: cliente.id,
+      paciente_id: paciente.id,
+    }));
+    setShowNuevoCliente(false);
+    setShowNuevaMascota(false);
+    setError("");
   }
 
   function onPacienteChange(pacienteId) {
@@ -292,7 +326,7 @@ export default function CitaForm({
         enfermedad: petForm.enfermedad,
         medicacion: petForm.medicacion,
         datos_adicionales: petForm.datos_adicionales,
-        clinica_cabecera_id: petForm.clinica_cabecera_id || null,
+        clinica_cabecera_id: petForm.clinica_cabecera_id || clinicaId,
         clinica_ref_nombre: petForm.clinica_ref_nombre,
         clinica_ref_direccion: petForm.clinica_ref_direccion,
         clinica_ref_telefono: petForm.clinica_ref_telefono,
@@ -302,7 +336,7 @@ export default function CitaForm({
       onPacientesChange?.(nextList);
       setForm((f) => ({ ...f, paciente_id: creado.id }));
       setShowNuevaMascota(false);
-      setPetForm({ ...EMPTY_PET_FORM });
+      setPetForm(emptyPetFormConCabecera(clinicaId));
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear la mascota.");
     } finally {
@@ -331,6 +365,10 @@ export default function CitaForm({
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (showNuevoCliente) {
+      setError("Guardá el cliente nuevo (o cancelá) antes de continuar con la cita.");
+      return;
+    }
     if (showNuevaMascota) {
       setError("Guardá la nueva mascota para continuar con la cita.");
       return;
@@ -453,32 +491,48 @@ export default function CitaForm({
             : "Nueva cita"}
       </h3>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Cliente" id="cita-cli">
-          {lockPaciente ? (
-            <input
-              id="cita-cli"
-              disabled
-              className={`${fieldClass} bg-stone-50 text-stone-600`}
-              value={clienteFijo?.nombre_completo || "Cliente"}
-            />
-          ) : (
-            <select
-              id="cita-cli"
-              required
-              className={fieldClass}
-              value={form.cliente_id}
-              onChange={(e) => onClienteChange(e.target.value)}
+        <div className="space-y-2">
+          <Field label="Cliente" id="cita-cli">
+            {lockPaciente ? (
+              <input
+                id="cita-cli"
+                disabled
+                className={`${fieldClass} bg-stone-50 text-stone-600`}
+                value={clienteFijo?.nombre_completo || "Cliente"}
+              />
+            ) : (
+              <select
+                id="cita-cli"
+                required={!showNuevoCliente}
+                className={fieldClass}
+                value={form.cliente_id}
+                disabled={showNuevoCliente}
+                onChange={(e) => onClienteChange(e.target.value)}
+              >
+                <option value="">Seleccionar cliente…</option>
+                {clientesOpts.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nombre_completo}
+                    {c.telefono ? ` · ${c.telefono}` : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+          {!lockPaciente && !initial?.id ? (
+            <button
+              type="button"
+              className="text-sm font-medium text-aguara-orange hover:underline"
+              onClick={() => {
+                setError("");
+                setShowNuevaMascota(false);
+                setShowNuevoCliente((v) => !v);
+              }}
             >
-              <option value="">Seleccionar cliente…</option>
-              {clientesOpts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre_completo}
-                  {c.telefono ? ` · ${c.telefono}` : ""}
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
+              {showNuevoCliente ? "Cancelar registro" : "+ Registrar cliente"}
+            </button>
+          ) : null}
+        </div>
         <div className="space-y-2">
           <Field label="Mascota" id="cita-pac">
             {lockPaciente ? (
@@ -491,10 +545,10 @@ export default function CitaForm({
             ) : (
               <select
                 id="cita-pac"
-                required={!showNuevaMascota && form.estado !== "lista_espera"}
+                required={!showNuevaMascota && !showNuevoCliente && form.estado !== "lista_espera"}
                 className={fieldClass}
                 value={form.paciente_id}
-                disabled={!form.cliente_id || showNuevaMascota}
+                disabled={!form.cliente_id || showNuevaMascota || showNuevoCliente}
                 onChange={(e) => onPacienteChange(e.target.value)}
               >
                 <option value="">
@@ -516,9 +570,10 @@ export default function CitaForm({
             <button
               type="button"
               className="text-sm font-medium text-aguara-orange hover:underline disabled:opacity-50"
-              disabled={!form.cliente_id}
+              disabled={!form.cliente_id || showNuevoCliente}
               onClick={() => {
                 setError("");
+                setShowNuevoCliente(false);
                 setShowNuevaMascota((v) => !v);
               }}
             >
@@ -526,6 +581,15 @@ export default function CitaForm({
             </button>
           ) : null}
         </div>
+
+        {showNuevoCliente ? (
+          <RegistrarClienteMascotaPanel
+            clinicaId={clinicaId}
+            fotoInputId="cita-nuevo-cliente"
+            onCancel={() => setShowNuevoCliente(false)}
+            onCreated={handleClienteMascotaCreado}
+          />
+        ) : null}
 
         {showNuevaMascota ? (
           <div className="sm:col-span-2 space-y-3 rounded-xl border border-aguara-orange/25 bg-aguara-cream/30 p-3">
@@ -538,6 +602,7 @@ export default function CitaForm({
               fieldClass={fieldClass}
               fotoInputId="cita-nueva-mascota"
               showTitle={false}
+              clinicas={clinicasCabecera}
             />
             <button
               type="button"
@@ -724,6 +789,11 @@ export default function CitaForm({
       ) : null}
 
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
+      {showNuevoCliente ? (
+        <p className="text-sm text-amber-800">
+          Guardá el cliente y la mascota para poder continuar con la cita.
+        </p>
+      ) : null}
       {showNuevaMascota ? (
         <p className="text-sm text-amber-800">
           Guardá la nueva mascota para poder continuar con la cita.
@@ -735,6 +805,7 @@ export default function CitaForm({
           disabled={
             saving ||
             showNuevaMascota ||
+            showNuevoCliente ||
             (!lockPaciente && form.estado !== "lista_espera" && !form.paciente_id)
           }
           className={primaryBtnClass}
