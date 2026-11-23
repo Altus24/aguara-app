@@ -38,7 +38,8 @@ begin
 exception when undefined_table then null;
 end $$;
 
--- Escaneos / tutor
+-- Push / escaneos / tutor
+select public._wipe_delete('public.push_subscriptions');
 select public._wipe_delete('public.chapita_escaneos');
 select public._wipe_delete('public.tutor_notificaciones');
 select public._wipe_delete('public.tutor_perfil_solicitudes');

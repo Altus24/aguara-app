@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import PushEnableControl from "@/components/chapitas/PushEnableControl";
 import AgendaSection from "@/components/clinica/AgendaSection";
 import ClientesSection from "@/components/clinica/ClientesSection";
 import ConfigSection from "@/components/clinica/ConfigSection";
@@ -120,16 +121,19 @@ export default function ClinicaPanel() {
           </h1>
           <p className="mt-2 text-sm text-stone-600">{clinica.email}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            signOut();
-            router.replace("/clinica/login");
-          }}
-          className="inline-flex h-10 items-center justify-center rounded-full border border-stone-300 bg-white px-4 text-sm font-medium text-stone-700 hover:border-stone-400"
-        >
-          Cerrar sesión
-        </button>
+        <div className="flex flex-col items-start gap-2 sm:items-end">
+          <PushEnableControl audience="clinica" audienceId={clinica.id} />
+          <button
+            type="button"
+            onClick={() => {
+              signOut();
+              router.replace("/clinica/login");
+            }}
+            className="text-sm text-stone-500 underline-offset-2 transition hover:text-aguara-ink hover:underline"
+          >
+            Cerrar sesión
+          </button>
+        </div>
       </div>
 
       {pendientes > 0 || notifs.length > 0 ? (

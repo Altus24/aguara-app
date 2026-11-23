@@ -1,6 +1,7 @@
-/* Aguará PWA — service worker mínimo para instalación y actualizaciones. */
-const CACHE = "aguara-shell-v2";
+/* Aguará PWA — shell + Web Push. */
+const CACHE = "aguara-shell-v3";
 const PRECACHE = ["/", "/icons/icon-192x192.png", "/icons/icon-512x512.png"];
+const DEFAULT_ICON = "/icons/icon-192x192.png";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -64,4 +65,72 @@ self.addEventListener("fetch", (event) => {
       ),
     );
   }
+});
+
+self.addEventListener("push", (event) => {
+  let data = {
+    title: "Aguará",
+    body: "",
+    url: "/",
+    tag: "aguara",
+  };
+  try {
+    if (event.data) {
+      const parsed = event.data.json();
+      data = {
+        title: parsed.title || data.title,
+        body: parsed.body || "",
+        url: parsed.url || "/",
+        tag: parsed.tag || "aguara",
+      };
+    }
+  } catch {
+    try {
+      const text = event.data?.text?.() || "";
+      if (text) data.body = text;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: DEFAULT_ICON,
+      badge: DEFAULT_ICON,
+      tag: data.tag,
+      renotify: true,
+      silent: false,
+      data: { url: data.url },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const targetUrl = event.notification?.data?.url || "/";
+  event.waitUntil(
+    (async () => {
+      const allClients = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      for (const client of allClients) {
+        if ("focus" in client) {
+          try {
+            await client.focus();
+            if ("navigate" in client && targetUrl) {
+              await client.navigate(targetUrl);
+            }
+            return;
+          } catch {
+            /* seguir */
+          }
+        }
+      }
+      if (self.clients.openWindow) {
+        await self.clients.openWindow(targetUrl);
+      }
+    })(),
+  );
 });

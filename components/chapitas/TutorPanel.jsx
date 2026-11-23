@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import PushEnableControl from "@/components/chapitas/PushEnableControl";
 import AgendaSection from "@/components/tutor/AgendaSection";
 import HistorialSection from "@/components/tutor/HistorialSection";
 import MascotasSection from "@/components/tutor/MascotasSection";
@@ -12,6 +13,7 @@ import PermisosSection from "@/components/tutor/PermisosSection";
 import RecordatoriosSection from "@/components/tutor/RecordatoriosSection";
 import { useTutorAuth } from "@/context/TutorAuthContext";
 import {
+  actualizarTutor,
   listarNotificacionesTutor,
   listarSolicitudesCompartirTutor,
   listarSolicitudesPerfilTutor,
@@ -34,7 +36,7 @@ const ALLOWED_TABS = new Set(NAV.map((item) => item.id));
 const DEFAULT_TAB = "recordatorios";
 
 export default function TutorPanel() {
-  const { tutor, isAuthenticated, authLoading, signOut } = useTutorAuth();
+  const { tutor, isAuthenticated, authLoading, signOut, refreshTutor } = useTutorAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [tab, setTab] = useState(() => {
@@ -141,16 +143,46 @@ export default function TutorPanel() {
           </h1>
           <p className="mt-2 text-sm text-stone-600">{tutor.email}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            signOut();
-            router.replace("/tutor/login");
-          }}
-          className="inline-flex h-10 items-center justify-center rounded-full border border-stone-300 bg-white px-4 text-sm font-medium text-stone-700 hover:border-stone-400"
-        >
-          Cerrar sesión
-        </button>
+        <div className="flex flex-col items-start gap-2 sm:items-end">
+          <PushEnableControl
+            audience="tutor"
+            audienceId={tutor.id}
+            onEnabledChange={async (enabled) => {
+              try {
+                const updated = await actualizarTutor(tutor.id, {
+                  nombre_completo: tutor.nombre_completo || "",
+                  telefono: tutor.telefono || "",
+                  telefono_secundario: tutor.telefono_secundario,
+                  direccion: tutor.direccion,
+                  clinica_preferida_id: tutor.clinica_preferida_id,
+                  calle: tutor.calle,
+                  numeracion: tutor.numeracion,
+                  tipo_vivienda: tutor.tipo_vivienda,
+                  piso_depto: tutor.piso_depto,
+                  localidad: tutor.localidad,
+                  provincia: tutor.provincia,
+                  maps_url: tutor.maps_url,
+                  recordatorio_anticipacion: tutor.recordatorio_anticipacion,
+                  recordatorio_canales: tutor.recordatorio_canales,
+                  notif_push_mobile: enabled,
+                });
+                refreshTutor?.({ ...tutor, ...updated, email: tutor.email });
+              } catch {
+                /* la suscripción push ya quedó; el flag es secundario */
+              }
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              signOut();
+              router.replace("/tutor/login");
+            }}
+            className="text-sm text-stone-500 underline-offset-2 transition hover:text-aguara-ink hover:underline"
+          >
+            Cerrar sesión
+          </button>
+        </div>
       </div>
 
       {notifEscaneo ? (

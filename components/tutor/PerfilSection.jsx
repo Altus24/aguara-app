@@ -138,15 +138,18 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
   async function handleToggleNotifMobile(checked) {
     setError("");
     setMessage("");
-    if (!checked) {
-      setForm((f) => ({ ...f, notif_push_mobile: false }));
-      return;
-    }
     setEnablingNotif(true);
     try {
-      await pedirPermisoNotificacionesMobile();
+      if (!checked) {
+        const { disablePushNotifications } = await import("@/lib/chapitas/pushClient");
+        await disablePushNotifications();
+        setForm((f) => ({ ...f, notif_push_mobile: false }));
+        setMessage("Notificaciones push desactivadas. Guardá el perfil para confirmar.");
+        return;
+      }
+      await pedirPermisoNotificacionesMobile(tutor.id);
       setForm((f) => ({ ...f, notif_push_mobile: true }));
-      setMessage("Notificaciones del celular activadas. Guardá el perfil para confirmar.");
+      setMessage("Notificaciones push activadas. Guardá el perfil para confirmar.");
     } catch (err) {
       setForm((f) => ({ ...f, notif_push_mobile: false }));
       setError(err instanceof Error ? err.message : "No se pudieron activar las notificaciones.");
@@ -484,11 +487,12 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
               disabled={enablingNotif}
               onChange={(e) => handleToggleNotifMobile(e.target.checked)}
             />
-            <span>
-              <span className="font-medium">Activar notificaciones en el celular</span>
+              <span>
+              <span className="font-medium">Activar notificaciones push</span>
               <span className="mt-0.5 block text-stone-500">
-                Pedimos permiso del navegador/dispositivo para avisarte de turnos y recordatorios.
-                {enablingNotif ? " Solicitando permiso…" : ""}
+                Avisos con sonido aunque la app esté cerrada (turnos, escaneos, recordatorios).
+                En iPhone hace falta instalar Aguará en Inicio.
+                {enablingNotif ? " Activando…" : ""}
               </span>
             </span>
           </label>
