@@ -62,7 +62,7 @@ export function LandingFooter() {
               </Link>
             </li>
             <li>
-              <Link href="/pacientes" className="hover:text-aguara-ink">
+              <Link href="/clinica" className="hover:text-aguara-ink">
                 Panel clínico
               </Link>
             </li>
