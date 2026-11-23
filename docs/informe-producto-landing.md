@@ -8,7 +8,7 @@
 
 ## 1. Qué es Aguará
 
-**Aguará** es una plataforma de **identificación inteligente para mascotas** mediante chapita con QR, más un **portal para tutores** y un **panel para clínicas veterinarias**.
+**Aguará** es una plataforma de **identificación inteligente para mascotas** mediante identificador con QR, más un **portal para tutores** y un **panel para clínicas veterinarias**.
 
 Si la mascota se pierde, quien escanea el QR puede contactar al tutor al instante. Además, el tutor y las clínicas gestionan historial clínico, turnos y recordatorios en un mismo ecosistema.
 
@@ -23,9 +23,9 @@ Si la mascota se pierde, quien escanea el QR puede contactar al tutor al instant
 
 | Público | Qué necesita | Qué le da Aguará |
 |--------|--------------|------------------|
-| **Tutor / dueño** | Recuperar la mascota si se pierde; orden médico y turnos | Chapita QR, ficha pública, portal, recordatorios, HC, turnos, PWA |
+| **Tutor / dueño** | Recuperar la mascota si se pierde; orden médico y turnos | Identificador QR, ficha pública, portal, recordatorios, HC, turnos, PWA |
 | **Clínica veterinaria** | Operar pacientes, agenda e historias | Panel completo: pacientes, agenda, HC, clientes, stock, red de tutores |
-| **Admin Aguará** | Fabricar y administrar chapitas y clínicas | Inventario de tiradas, estilo QR, altas de clínicas |
+| **Admin Aguará** | Fabricar y administrar identificadores y clínicas | Inventario de tiradas, estilo QR, altas de clínicas |
 
 **Prioridad de landing:**  
 1) Tutores (volumen / emoción de reencuentro)  
@@ -44,9 +44,9 @@ Al escanear el QR del collar, cualquiera ve foto, nombre, datos clave y puede:
 - Ver clínica de cabecera
 
 ### B) Identidad permanente
-- Chapita física con QR de marca Aguará
+- Identificador físico con QR de marca Aguará
 - Código tipo `T1-001` / `T3-005`
-- Se puede crear la mascota **sin chapita** y vincular el QR después
+- Se puede crear la mascota **sin identificador** y vincular el QR después
 
 ### C) Salud y organización (tutor)
 - Vacunas, desparasitaciones, tratamientos, medicación
@@ -64,8 +64,8 @@ Al escanear el QR del collar, cualquiera ve foto, nombre, datos clave y puede:
 
 ## 4. Funcionalidades por módulo
 
-### 4.1 Chapita / QR
-- Activación de chapita (datos del tutor + mascota)
+### 4.1 Identificador / QR
+- Activación del identificador (datos del tutor + mascota)
 - Lectura pública al escanear (`/mascota/...` o ruta corta `/q/...`)
 - Acciones de reencuentro: WhatsApp, llamada, GPS
 - QR con branding Aguará (logo, colores, nombre, escuadras)
@@ -74,8 +74,8 @@ Al escanear el QR del collar, cualquiera ve foto, nombre, datos clave y puede:
 ### 4.2 Portal del tutor (`/tutor`)
 Secciones: **Recordatorios · Mis mascotas · Mis citas · Historial clínico · Permisos · Perfil**
 
-- Alta de mascotas (con o sin chapita)
-- Vincular chapita después
+- Alta de mascotas (con o sin identificador)
+- Vincular identificador después
 - Solicitar / cancelar / reprogramar turnos
 - Vacunas y tratamientos cargados por el tutor
 - Recordatorios y medicación
@@ -95,7 +95,7 @@ Secciones: **Dashboard · Tutores · Pacientes · Agenda · Historias · Cliente
 - Vínculo con tutores Aguará y solicitud de compartir perfil/HC
 
 ### 4.4 Admin
-- Inventario de chapitas / tiradas
+- Inventario de identificadores / tiradas
 - Personalización del estilo de QR
 - Alta y gestión de clínicas
 - Listado de tutores
@@ -106,7 +106,7 @@ Secciones: **Dashboard · Tutores · Pacientes · Agenda · Historias · Cliente
 
 1. **QR de reencuentro** con WhatsApp + llamada + GPS  
 2. **Clínica de cabecera** aunque no esté registrada en Aguará (nombre, dirección, teléfono)  
-3. **Mascota digital primero**, chapita después  
+3. **Mascota digital primero**, identificador después  
 4. **Historial clínico** controlado por el tutor (permisos)  
 5. **Tutor + clínica** en la misma plataforma  
 6. **PWA** instalable en el celular  
@@ -118,7 +118,7 @@ Secciones: **Dashboard · Tutores · Pacientes · Agenda · Historias · Cliente
 
 ### Objetivo
 Captar:
-1. Tutores que activen / usen chapita  
+1. Tutores que activen / usen identificador  
 2. Clínicas que se registren en la red  
 
 ### Tono
@@ -137,7 +137,7 @@ Captar:
 6. **CTA final** + accesos Tutor / Clínica  
 
 ### CTAs sugeridos
-- “Activá tu chapita”
+- “Activá tu identificador”
 - “Soy tutor”
 - “Registrá tu clínica”
 - “Si encontrás una mascota, escaneá el QR”
@@ -173,7 +173,7 @@ Captar:
 - “Escanean, te escriben, la recuperás.”
 - “Identificación + historial médico + turnos, en una sola app.”
 - “Para tutores que cuidan. Para clínicas que atienden.”
-- “Chapita una vez. Tranquilidad siempre.”
+- “Identificador una vez. Tranquilidad siempre.”
 
 ---
 

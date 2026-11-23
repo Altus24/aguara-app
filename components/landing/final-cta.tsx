@@ -9,7 +9,7 @@ export function FinalCta() {
         <div className="overflow-hidden rounded-[2rem] bg-aguara-ink px-6 py-12 text-center text-white sm:px-12 sm:py-16">
           <p className="text-sm font-medium text-aguara-cream">Listo para empezar</p>
           <h2 className="mx-auto mt-3 max-w-2xl text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
-            Conseguí la chapita Aguará
+            Conseguí el identificador Aguará
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-pretty text-sm leading-7 text-white/70 sm:text-base">
             Activá el perfil de tu mascota y quedate tranquilo. Si ya tenés el QR, registralo en

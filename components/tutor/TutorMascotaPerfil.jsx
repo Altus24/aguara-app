@@ -12,27 +12,33 @@ import {
   actualizarDatosBasicosMascota,
   actualizarFotoMascota,
   cargarPerfilClinicoMascota,
+  marcarMascotaPerdida,
 } from "@/lib/chapitas/mascotaPerfil";
 import {
   chapitaDisponibleParaActivar,
   vincularChapitaAMascotaDigital,
 } from "@/lib/chapitas/mascotasTutor";
 import {
+  actualizarVacunaTutor,
   crearTratamientoTutor,
   crearVacunaTutor,
   eliminarTratamientoTutor,
-  eliminarVacunaTutor,
   listarClinicas,
   listarEscaneosMascota,
 } from "@/lib/chapitas/tutorPortal";
-import { esVacunaVencida, vacunasParaEspecie } from "@/lib/chapitas/vacunas";
-import { confirmEliminar, confirmGuardar } from "@/lib/confirmAction";
+import { confirmAccion, confirmEliminar, confirmGuardar } from "@/lib/confirmAction";
 import {
   CLINICA_AGREGAR_VALUE,
   ESPECIES_MASCOTA,
   SEXOS_MASCOTA,
   TEMPERAMENTOS_MASCOTA,
 } from "@/components/mascotas/MascotaRegistroFields";
+import VacunasCatalogoList from "@/components/mascotas/VacunasCatalogoList";
+import {
+  diasHastaFecha,
+  enVentanaRecordatorio,
+  etiquetaDiasVencimiento,
+} from "@/lib/chapitas/recordatoriosVentana";
 import { razasParaEspecie } from "@/lib/chapitas/razas";
 import {
   Field,
@@ -86,6 +92,8 @@ export default function TutorMascotaPerfil() {
   const [uploadingFoto, setUploadingFoto] = useState(false);
   const [fotoMsg, setFotoMsg] = useState("");
   const [escaneos, setEscaneos] = useState([]);
+  const [busyPerdida, setBusyPerdida] = useState(false);
+  const [perdidaMsg, setPerdidaMsg] = useState("");
   const fotoInputRef = useRef(null);
   const sinChapita = isDigitalMascotaId(chapitaId);
 
@@ -280,7 +288,7 @@ export default function TutorMascotaPerfil() {
   async function handleVincularChapita(event) {
     event.preventDefault();
     event.stopPropagation();
-    if (!(await confirmGuardar("el vínculo de la chapita a esta mascota"))) return;
+    if (!(await confirmGuardar("el vínculo del identificador a esta mascota"))) return;
     setLinking(true);
     setError("");
     setLinkMsg("");
@@ -293,10 +301,10 @@ export default function TutorMascotaPerfil() {
         chapitaCodigo: check.id,
       });
       const nuevoId = result.chapita_id || check.id;
-      setLinkMsg(`Chapita ${nuevoId} vinculada.`);
+      setLinkMsg(`Identificador ${nuevoId} vinculado.`);
       router.replace(`/tutor/mascota/${encodeURIComponent(nuevoId)}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo vincular la chapita.");
+      setError(err instanceof Error ? err.message : "No se pudo vincular el identificador.");
     } finally {
       setLinking(false);
     }
@@ -307,30 +315,30 @@ export default function TutorMascotaPerfil() {
     if (!perfil) return [];
     const rows = [];
     for (const v of perfil.vacunas || []) {
-      if (v.proxima_fecha && v.proxima_fecha >= hoy) {
-        rows.push({
-          id: `vac-${v.origen || "c"}-${v.id}`,
-          tipo: "Vacuna",
-          title: v.nombre,
-          date: v.proxima_fecha,
-          sort: v.proxima_fecha,
-        });
-      }
+      if (!enVentanaRecordatorio(v.proxima_fecha)) continue;
+      rows.push({
+        id: `vac-${v.origen || "c"}-${v.id}`,
+        tipo: "Vacuna",
+        title: v.nombre,
+        date: v.proxima_fecha,
+        diasLabel: etiquetaDiasVencimiento(diasHastaFecha(v.proxima_fecha)),
+        sort: v.proxima_fecha,
+      });
     }
     for (const d of perfil.desparasitaciones || []) {
-      if (d.proxima_fecha && d.proxima_fecha >= hoy) {
-        rows.push({
-          id: `desp-${d.id}`,
-          tipo: "Desparasitación",
-          title: d.producto,
-          date: d.proxima_fecha,
-          detail: "Fecha de caducidad / próxima dosis",
-          sort: d.proxima_fecha,
-        });
-      }
+      if (!enVentanaRecordatorio(d.proxima_fecha)) continue;
+      rows.push({
+        id: `desp-${d.id}`,
+        tipo: "Desparasitación",
+        title: d.producto,
+        date: d.proxima_fecha,
+        diasLabel: etiquetaDiasVencimiento(diasHastaFecha(d.proxima_fecha)),
+        detail: "Fecha de caducidad / próxima dosis",
+        sort: d.proxima_fecha,
+      });
     }
     for (const r of perfil.recordatorios || []) {
-      if (r.fecha_proxima && r.fecha_proxima < hoy) continue;
+      if (!enVentanaRecordatorio(r.fecha_proxima)) continue;
       const tipoLabel =
         r.tipo === "medicacion"
           ? "Medicación"
@@ -344,18 +352,20 @@ export default function TutorMascotaPerfil() {
         tipo: tipoLabel,
         title: r.titulo,
         date: r.fecha_proxima || null,
+        diasLabel: etiquetaDiasVencimiento(diasHastaFecha(r.fecha_proxima)),
         detail: r.detalle || null,
         sort: r.fecha_proxima || "9999-12-31",
       });
     }
     if (perfil.proximaCita?.inicio) {
       const dia = String(perfil.proximaCita.inicio).slice(0, 10);
-      if (dia >= hoy) {
+      if (enVentanaRecordatorio(dia)) {
         rows.push({
           id: `cita-${perfil.proximaCita.id}`,
           tipo: "Cita",
           title: perfil.proximaCita.clinicas?.nombre || "Clínica",
           dateLabel: formatDateTime(perfil.proximaCita.inicio),
+          diasLabel: etiquetaDiasVencimiento(diasHastaFecha(dia)),
           detail: perfil.proximaCita.motivo || etiquetaEstado(perfil.proximaCita.estado),
           sort: dia,
         });
@@ -770,14 +780,95 @@ export default function TutorMascotaPerfil() {
               ) : null}
               {sinChapita ? (
                 <p className="mt-2 inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900">
-                  Sin chapita todavía
+                  Sin identificador todavía
                 </p>
               ) : (
-                <p className="mt-1 text-xs text-stone-400">Chapita {perfil.chapitaId}</p>
+                <p className="mt-1 text-xs text-stone-400">Identificador {perfil.chapitaId}</p>
               )}
+              {perfil.perdida ? (
+                <p className="mt-3 inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800">
+                  Marcada como perdida
+                  {perfil.perdida_desde
+                    ? ` · desde ${formatDateTime(perfil.perdida_desde)}`
+                    : ""}
+                </p>
+              ) : null}
             </div>
           </div>
         )}
+      </div>
+
+      <div
+        className={`${cardClass} mb-5 ${
+          perfil.perdida
+            ? "border-red-200 bg-red-50"
+            : "border-amber-200 bg-amber-50/70"
+        }`}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2
+              className={`text-base font-semibold ${
+                perfil.perdida ? "text-red-950" : "text-amber-950"
+              }`}
+            >
+              {perfil.perdida ? "Mascota perdida activa" : "¿Se perdió?"}
+            </h2>
+            <p
+              className={`mt-1 text-sm ${
+                perfil.perdida ? "text-red-900/80" : "text-amber-900/80"
+              }`}
+            >
+              {perfil.perdida
+                ? "Quien escanee su identificador verá un aviso destacado para contactarte."
+                : "Activá el aviso en la ficha pública del identificador para que quien la encuentre te contacte."}
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={busyPerdida}
+            className={
+              perfil.perdida
+                ? secondaryBtnClass
+                : "inline-flex h-10 items-center justify-center rounded-full bg-red-600 px-4 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+            }
+            onClick={async () => {
+              const activar = !perfil.perdida;
+              const ok = await confirmAccion(
+                activar
+                  ? `¿Marcar a ${perfil.nombre} como mascota perdida?`
+                  : `¿Marcar a ${perfil.nombre} como encontrada?`,
+              );
+              if (!ok) return;
+              setBusyPerdida(true);
+              setPerdidaMsg("");
+              setError("");
+              try {
+                await marcarMascotaPerdida(perfil.chapitaId || chapitaId, activar);
+                setPerdidaMsg(
+                  activar
+                    ? "Aviso de mascota perdida activado."
+                    : "Marcaste a tu mascota como encontrada.",
+                );
+                await reload();
+              } catch (err) {
+                setError(
+                  err instanceof Error
+                    ? err.message
+                    : "No se pudo actualizar el estado de mascota perdida.",
+                );
+              } finally {
+                setBusyPerdida(false);
+              }
+            }}
+          >
+            {busyPerdida
+              ? "Guardando…"
+              : perfil.perdida
+                ? "Ya la encontré"
+                : "Mascota Perdida"}
+          </button>
+        </div>
       </div>
 
       {error ? (
@@ -786,6 +877,7 @@ export default function TutorMascotaPerfil() {
         </p>
       ) : null}
       {fotoMsg ? <p className="mb-4 text-sm text-emerald-700">{fotoMsg}</p> : null}
+      {perdidaMsg ? <p className="mb-4 text-sm text-emerald-700">{perdidaMsg}</p> : null}
       {linkMsg ? <p className="mb-4 text-sm text-emerald-700">{linkMsg}</p> : null}
 
       <div className="space-y-5">
@@ -793,7 +885,7 @@ export default function TutorMascotaPerfil() {
           <section className={cardClass}>
             <h2 className="text-lg font-semibold text-aguara-ink">Escaneos del QR</h2>
             <p className="mt-1 text-sm text-stone-500">
-              Zona aproximada por IP cuando alguien abre la chapita (sin pedir GPS).
+              Zona aproximada por IP cuando alguien abre el identificador (sin pedir GPS).
             </p>
             {escaneos.length === 0 ? (
               <p className="mt-3 text-sm text-stone-500">Todavía no hay escaneos registrados.</p>
@@ -833,7 +925,7 @@ export default function TutorMascotaPerfil() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-aguara-ink">Recordatorios</h2>
-              <p className="text-sm text-stone-500">Pendientes con fecha desde hoy</p>
+              <p className="text-sm text-stone-500">Vencimientos de los próximos 7 días</p>
             </div>
             <Link
               href={`/tutor?tab=agenda&sacar=1&mascota=${encodeURIComponent(chapitaId)}`}
@@ -843,7 +935,7 @@ export default function TutorMascotaPerfil() {
             </Link>
           </div>
           {recordatoriosPerfil.length === 0 ? (
-            <p className="mt-3 text-sm text-stone-500">Sin recordatorios desde hoy.</p>
+            <p className="mt-3 text-sm text-stone-500">Sin vencimientos en la próxima semana.</p>
           ) : (
             <ul className="mt-3 divide-y divide-stone-100">
               {recordatoriosPerfil.map((item) => (
@@ -858,9 +950,14 @@ export default function TutorMascotaPerfil() {
                     <p className="font-medium text-aguara-ink">{item.title}</p>
                     {item.detail ? <p className="text-stone-500">{item.detail}</p> : null}
                   </div>
-                  <p className="shrink-0 text-stone-600">
-                    {item.dateLabel || (item.date ? formatDate(item.date) : "—")}
-                  </p>
+                  <div className="shrink-0 text-right">
+                    {item.diasLabel ? (
+                      <p className="font-medium text-aguara-ink">{item.diasLabel}</p>
+                    ) : null}
+                    <p className="text-stone-600">
+                      {item.dateLabel || (item.date ? formatDate(item.date) : "—")}
+                    </p>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -869,12 +966,12 @@ export default function TutorMascotaPerfil() {
 
         {sinChapita ? (
           <section className={cardClass}>
-            <h2 className="text-lg font-semibold text-aguara-ink">Vincular chapita</h2>
+            <h2 className="text-lg font-semibold text-aguara-ink">Vincular identificador</h2>
             <p className="mt-1 text-sm text-stone-500">
-              Ingresá el código impreso en la chapita (o el del QR) para asociarla a esta mascota.
+              Ingresá el código impreso en el identificador (o el del QR) para asociarlo a esta mascota.
             </p>
             <form onSubmit={handleVincularChapita} className="mt-4 space-y-3">
-              <Field label="Código de la chapita" id="perfil-codigo-chapita">
+              <Field label="Código del identificador" id="perfil-codigo-chapita">
                 <input
                   id="perfil-codigo-chapita"
                   required
@@ -1057,152 +1154,59 @@ export default function TutorMascotaPerfil() {
 }
 
 function VacunasPerfilSection({ tutor, perfil, chapitaId, onChanged }) {
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-  const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({
-    nombre: "",
-    fecha: new Date().toISOString().slice(0, 10),
-  });
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-    if (!tutor?.id) return;
-    setSaving(true);
-    setError("");
-    setMessage("");
-    try {
-      await crearVacunaTutor(tutor.id, {
-        mascota_id: chapitaId,
-        paciente_id: perfil.pacienteIds?.[0] || null,
-        nombre: form.nombre,
-        fecha: form.fecha,
-      });
-      setForm({
-        nombre: "",
-        fecha: new Date().toISOString().slice(0, 10),
-      });
-      setMessage("Vacuna agregada.");
-      setShowAdd(false);
-      await onChanged();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar la vacuna.");
-    } finally {
-      setSaving(false);
-    }
-  }
+  const [busy, setBusy] = useState(false);
 
   return (
-    <section className={cardClass}>
-      <h2 className="text-lg font-semibold text-aguara-ink">Vacunas</h2>
-
-      {perfil.vacunas.length === 0 ? (
-        <p className="mt-3 text-sm text-stone-500">Todavía no hay vacunas registradas.</p>
-      ) : (
-        <ul className="mt-3 space-y-2 text-sm">
-          {perfil.vacunas.map((v) => (
-            <li
-              key={`${v.origen || "clinica"}-${v.id}`}
-              className="flex flex-wrap items-start justify-between gap-2 rounded-xl bg-aguara-cream/40 px-3 py-2"
-            >
-              <div>
-                <strong>{v.nombre}</strong> · {formatDate(v.fecha)}
-                {esVacunaVencida(v) ? (
-                  <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-800">
-                    Vencida
-                  </span>
-                ) : null}
-                {v.origen === "tutor" ? (
-                  <span className="ml-1 text-xs text-aguara-orange">(cargada por vos)</span>
-                ) : (
-                  <span className="ml-1 text-xs text-stone-500">(cargada por la clínica)</span>
-                )}
-                {v.proxima_fecha ? (
-                  <span className="block text-aguara-orange">
-                    Próxima: {formatDate(v.proxima_fecha)}
-                  </span>
-                ) : null}
-              </div>
-              {v.origen === "tutor" && tutor?.id ? (
-                <button
-                  type="button"
-                  className="text-xs text-stone-500 underline"
-                  onClick={async () => {
-                    try {
-                      await eliminarVacunaTutor(tutor.id, v.id);
-                      await onChanged();
-                    } catch (err) {
-                      setError(err instanceof Error ? err.message : "No se pudo eliminar.");
-                    }
-                  }}
-                >
-                  Quitar
-                </button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <button
-        type="button"
-        className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-aguara-orange hover:underline"
-        aria-expanded={showAdd}
-        onClick={() => {
-          setShowAdd((v) => !v);
-          setError("");
-          setMessage("");
-        }}
-      >
-        <span aria-hidden className={`inline-block transition-transform ${showAdd ? "rotate-90" : ""}`}>
-          ›
+    <section className={`${cardClass} space-y-3`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold text-aguara-ink">Vacunas</h2>
+        <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
+          Catálogo completo · vencimiento a 1 año
         </span>
-        {showAdd ? "Ocultar formulario" : "Agregar vacuna"}
-      </button>
-
-      {showAdd ? (
-        <form onSubmit={handleSubmit} className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
-          <Field label="Vacuna" id="perf-vac-nom">
-            <select
-              id="perf-vac-nom"
-              required
-              className={fieldClass}
-              value={form.nombre}
-              onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
-            >
-              <option value="">Seleccionar…</option>
-              {vacunasParaEspecie(perfil.especie).map((nombre) => (
-                <option key={nombre} value={nombre}>
-                  {nombre}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Fecha" id="perf-vac-fecha">
-            <input
-              id="perf-vac-fecha"
-              type="date"
-              required
-              className={fieldClass}
-              value={form.fecha}
-              onChange={(e) => setForm((f) => ({ ...f, fecha: e.target.value }))}
-            />
-          </Field>
-          <div className="flex items-end">
-            <button type="submit" disabled={saving} className={primaryBtnClass}>
-              {saving ? "…" : "Agregar"}
-            </button>
-          </div>
-        </form>
-      ) : null}
-
-      {error ? (
-        <p className="mt-2 text-sm text-red-700" role="alert">
-          {error}
-        </p>
-      ) : null}
-      {message ? <p className="mt-2 text-sm text-emerald-700">{message}</p> : null}
+      </div>
+      <VacunasCatalogoList
+        especie={perfil.especie}
+        vacunas={perfil.vacunas || []}
+        formatDate={formatDate}
+        fieldClass={fieldClass}
+        primaryBtnClass={primaryBtnClass}
+        secondaryBtnClass={secondaryBtnClass}
+        busy={busy}
+        canUpdateVacuna={(v) => v.origen === "tutor" && Boolean(tutor?.id)}
+        onRegistrar={async ({ nombre, fecha, proxima_fecha }) => {
+          if (!tutor?.id) throw new Error("Sesión de tutor no disponible.");
+          setBusy(true);
+          try {
+            await crearVacunaTutor(tutor.id, {
+              mascota_id: chapitaId,
+              paciente_id: perfil.pacienteIds?.[0] || null,
+              nombre,
+              fecha,
+              proxima_fecha,
+            });
+            await onChanged();
+          } finally {
+            setBusy(false);
+          }
+        }}
+        onActualizarFecha={async (vacuna, { fecha, proxima_fecha }) => {
+          if (!tutor?.id) throw new Error("Sesión de tutor no disponible.");
+          if (vacuna.origen !== "tutor") {
+            throw new Error("Las vacunas de la clínica las actualiza la clínica.");
+          }
+          setBusy(true);
+          try {
+            await actualizarVacunaTutor(tutor.id, vacuna.id, {
+              nombre: vacuna.nombre,
+              fecha,
+              proxima_fecha,
+            });
+            await onChanged();
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
     </section>
   );
 }

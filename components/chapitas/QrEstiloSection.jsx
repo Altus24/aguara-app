@@ -442,7 +442,7 @@ export default function QrEstiloSection({ onSaved }) {
                     setNombrePlantilla(e.target.value);
                     setErrorMsg('');
                   }}
-                  placeholder="Ej. Chapita 3 cm clásica"
+                  placeholder="Ej. Identificador 3 cm clásico"
                   className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
                 />
               </label>

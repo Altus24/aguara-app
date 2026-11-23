@@ -97,7 +97,7 @@ export function TutorAuthProvider({ children }) {
 
     if (!data) {
       throw new Error(
-        "No encontramos un tutor con ese email. Registrate o activá una chapita primero.",
+        "No encontramos un tutor con ese email. Registrate o activá un identificador primero.",
       );
     }
 

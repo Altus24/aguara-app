@@ -20,12 +20,8 @@ import {
   actualizarConsulta,
   cerrarConsulta,
   consultaPendienteCompletar,
-  crearArchivo,
   crearConsulta,
-  crearDesparasitacion,
   crearPaciente,
-  crearRecordatorio,
-  crearVacuna,
   listarArchivosPacienteCompletas,
   listarClientes,
   listarConsultas,
@@ -37,8 +33,7 @@ import {
   obtenerPaciente,
 } from "@/lib/chapitas/clinicaOps";
 import { readClinicSession } from "@/lib/chapitas/clinicSession";
-import { crearTratamiento } from "@/lib/chapitas/mascotaPerfil";
-import { esVacunaVencida, vacunasParaEspecie } from "@/lib/chapitas/vacunas";
+import { esVacunaVencida } from "@/lib/chapitas/vacunas";
 import { confirmGuardar } from "@/lib/confirmAction";
 
 export default function HistoriasSection({ clinicaId }) {
@@ -671,22 +666,6 @@ export function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [firmaVetId, setFirmaVetId] = useState("");
-  const [vacuna, setVacuna] = useState({ nombre: "", fecha: "", proxima_fecha: "", lote: "" });
-  const [desp, setDesp] = useState({ producto: "", fecha: "", proxima_fecha: "" });
-  const [archivo, setArchivo] = useState({ nombre: "", tipo: "estudio", url: "" });
-  const [recordatorio, setRecordatorio] = useState({
-    tipo: "medicacion",
-    titulo: "",
-    detalle: "",
-    fecha_proxima: "",
-  });
-  const [tratamiento, setTratamiento] = useState({
-    titulo: "",
-    detalle: "",
-    fecha_inicio: "",
-    fecha_fin: "",
-    de_por_vida: false,
-  });
   const [busy, setBusy] = useState(false);
 
   async function load() {
@@ -825,7 +804,7 @@ export function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged
               <p className="mt-1 text-stone-500">
                 {paciente.chip ? `Chip: ${paciente.chip}` : ""}
                 {paciente.mascota_chapita_id || paciente.chapita_codigo
-                  ? `${paciente.chip ? " · " : ""}Chapita: ${
+                  ? `${paciente.chip ? " · " : ""}Identificador: ${
                       paciente.mascota_chapita_id || paciente.chapita_codigo
                     }`
                   : ""}
@@ -1020,309 +999,6 @@ export function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged
             ) : null}
           </div>
         ) : null}
-      </div>
-
-      <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
-        <form
-          className={`${cardClass} space-y-2`}
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            try {
-              await crearVacuna(clinicaId, {
-                paciente_id: consulta.paciente_id,
-                ...vacuna,
-              });
-              setVacuna({ nombre: "", fecha: "", proxima_fecha: "", lote: "" });
-              await onChanged();
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Error vacuna.");
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <h3 className="font-semibold text-aguara-ink">Vacuna</h3>
-          <select
-            required
-            className={fieldClass}
-            value={vacuna.nombre}
-            onChange={(e) => setVacuna((v) => ({ ...v, nombre: e.target.value }))}
-          >
-            <option value="">Seleccionar vacuna…</option>
-            {vacunasParaEspecie(paciente?.especie).map((nombre) => (
-              <option key={nombre} value={nombre}>
-                {nombre}
-              </option>
-            ))}
-          </select>
-          <label className="block text-xs text-stone-500">
-            Fecha de aplicación
-            <input
-              type="date"
-              className={`${fieldClass} mt-1`}
-              value={vacuna.fecha}
-              onChange={(e) => setVacuna((v) => ({ ...v, fecha: e.target.value }))}
-            />
-          </label>
-          <label className="block text-xs text-stone-500">
-            Próxima dosis / vencimiento
-            <input
-              type="date"
-              className={`${fieldClass} mt-1`}
-              value={vacuna.proxima_fecha}
-              onChange={(e) => setVacuna((v) => ({ ...v, proxima_fecha: e.target.value }))}
-            />
-          </label>
-          <input
-            placeholder="Lote"
-            className={fieldClass}
-            value={vacuna.lote}
-            onChange={(e) => setVacuna((v) => ({ ...v, lote: e.target.value }))}
-          />
-          <button type="submit" className={primaryBtnClass} disabled={busy}>
-            Agregar vacuna
-          </button>
-        </form>
-
-        <form
-          className={`${cardClass} space-y-2`}
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            try {
-              await crearDesparasitacion(clinicaId, {
-                paciente_id: consulta.paciente_id,
-                ...desp,
-              });
-              setDesp({ producto: "", fecha: "", proxima_fecha: "" });
-              await onChanged();
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Error desparasitación.");
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <h3 className="font-semibold text-aguara-ink">Desparasitación</h3>
-          <input
-            required
-            placeholder="Producto"
-            className={fieldClass}
-            value={desp.producto}
-            onChange={(e) => setDesp((v) => ({ ...v, producto: e.target.value }))}
-          />
-          <label className="block text-xs text-stone-500">
-            Fecha de aplicación
-            <input
-              type="date"
-              className={`${fieldClass} mt-1`}
-              value={desp.fecha}
-              onChange={(e) => setDesp((v) => ({ ...v, fecha: e.target.value }))}
-            />
-          </label>
-          <label className="block text-xs text-stone-500">
-            Fecha de caducidad
-            <input
-              type="date"
-              className={`${fieldClass} mt-1`}
-              value={desp.proxima_fecha}
-              onChange={(e) => setDesp((v) => ({ ...v, proxima_fecha: e.target.value }))}
-            />
-          </label>
-          <p className="text-xs text-stone-400">
-            Si cargás caducidad, aparece en los recordatorios del tutor.
-          </p>
-          <button type="submit" className={primaryBtnClass} disabled={busy}>
-            Agregar
-          </button>
-        </form>
-
-        <form
-          className={`${cardClass} space-y-2`}
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            try {
-              await crearArchivo(clinicaId, {
-                paciente_id: consulta.paciente_id,
-                consulta_id: consulta.id,
-                ...archivo,
-              });
-              setArchivo({ nombre: "", tipo: "estudio", url: "" });
-              await onChanged();
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Error archivo.");
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <h3 className="font-semibold text-aguara-ink">Archivo</h3>
-          <input
-            required
-            placeholder="Nombre"
-            className={fieldClass}
-            value={archivo.nombre}
-            onChange={(e) => setArchivo((v) => ({ ...v, nombre: e.target.value }))}
-          />
-          <select
-            className={fieldClass}
-            value={archivo.tipo}
-            onChange={(e) => setArchivo((v) => ({ ...v, tipo: e.target.value }))}
-          >
-            <option value="estudio">Estudio</option>
-            <option value="foto">Foto</option>
-            <option value="lab">Laboratorio</option>
-            <option value="otro">Otro</option>
-          </select>
-          <input
-            required
-            type="url"
-            placeholder="URL del archivo"
-            className={fieldClass}
-            value={archivo.url}
-            onChange={(e) => setArchivo((v) => ({ ...v, url: e.target.value }))}
-          />
-          <button type="submit" className={primaryBtnClass} disabled={busy}>
-            Adjuntar
-          </button>
-          <p className="text-xs text-stone-400">Pegá un link (Drive, Dropbox, Storage, etc.).</p>
-        </form>
-
-        <form
-          className={`${cardClass} space-y-2`}
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            try {
-              await crearRecordatorio(clinicaId, {
-                paciente_id: consulta.paciente_id,
-                cliente_id: consulta.cliente_id,
-                ...recordatorio,
-              });
-              setRecordatorio({
-                tipo: "medicacion",
-                titulo: "",
-                detalle: "",
-                fecha_proxima: "",
-              });
-              await onChanged();
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Error recordatorio.");
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <h3 className="font-semibold text-aguara-ink">Recordatorio tutor</h3>
-          <select
-            className={fieldClass}
-            value={recordatorio.tipo}
-            onChange={(e) => setRecordatorio((v) => ({ ...v, tipo: e.target.value }))}
-          >
-            <option value="medicacion">Medicación</option>
-            <option value="control">Control</option>
-            <option value="vacuna">Vacuna</option>
-            <option value="otro">Otro</option>
-          </select>
-          <input
-            required
-            placeholder="Título"
-            className={fieldClass}
-            value={recordatorio.titulo}
-            onChange={(e) => setRecordatorio((v) => ({ ...v, titulo: e.target.value }))}
-          />
-          <input
-            placeholder="Detalle / dosis"
-            className={fieldClass}
-            value={recordatorio.detalle}
-            onChange={(e) => setRecordatorio((v) => ({ ...v, detalle: e.target.value }))}
-          />
-          <input
-            type="date"
-            className={fieldClass}
-            value={recordatorio.fecha_proxima}
-            onChange={(e) => setRecordatorio((v) => ({ ...v, fecha_proxima: e.target.value }))}
-          />
-          <button type="submit" className={primaryBtnClass} disabled={busy}>
-            Cargar para el tutor
-          </button>
-        </form>
-
-        <form
-          className={`${cardClass} space-y-2`}
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            try {
-              await crearTratamiento(clinicaId, {
-                paciente_id: consulta.paciente_id,
-                ...tratamiento,
-              });
-              setTratamiento({
-                titulo: "",
-                detalle: "",
-                fecha_inicio: "",
-                fecha_fin: "",
-                de_por_vida: false,
-              });
-              await onChanged();
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Error tratamiento.");
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <h3 className="font-semibold text-aguara-ink">Tratamiento activo</h3>
-          <input
-            required
-            placeholder="Nombre del tratamiento"
-            className={fieldClass}
-            value={tratamiento.titulo}
-            onChange={(e) => setTratamiento((v) => ({ ...v, titulo: e.target.value }))}
-          />
-          <input
-            placeholder="Detalle / indicaciones"
-            className={fieldClass}
-            value={tratamiento.detalle}
-            onChange={(e) => setTratamiento((v) => ({ ...v, detalle: e.target.value }))}
-          />
-          <input
-            type="date"
-            className={fieldClass}
-            value={tratamiento.fecha_inicio}
-            onChange={(e) => setTratamiento((v) => ({ ...v, fecha_inicio: e.target.value }))}
-            title="Inicio"
-          />
-          <label className="flex items-center gap-2 text-sm text-stone-700">
-            <input
-              type="checkbox"
-              checked={tratamiento.de_por_vida}
-              onChange={(e) =>
-                setTratamiento((v) => ({
-                  ...v,
-                  de_por_vida: e.target.checked,
-                  fecha_fin: e.target.checked ? "" : v.fecha_fin,
-                }))
-              }
-            />
-            De por vida
-          </label>
-          {!tratamiento.de_por_vida ? (
-            <input
-              type="date"
-              className={fieldClass}
-              value={tratamiento.fecha_fin}
-              onChange={(e) => setTratamiento((v) => ({ ...v, fecha_fin: e.target.value }))}
-              title="Fecha de finalización"
-            />
-          ) : null}
-          <button type="submit" className={primaryBtnClass} disabled={busy}>
-            Guardar tratamiento
-          </button>
-        </form>
       </div>
     </div>
   );

@@ -12,6 +12,11 @@ import {
 } from "@/components/tutor/ui";
 import { confirmEliminar, confirmGuardar } from "@/lib/confirmAction";
 import {
+  diasHastaFecha,
+  enVentanaRecordatorio,
+  etiquetaDiasVencimiento,
+} from "@/lib/chapitas/recordatoriosVentana";
+import {
   crearRecordatorioTutor,
   eliminarRecordatorioTutor,
   historialClinicoTutor,
@@ -74,6 +79,11 @@ export default function RecordatoriosSection({ tutor }) {
           mascotas: pets.mascotas || hist.mascotas || [],
           citasProximas: citas.proximas || [],
         });
+        // Dispara push de vencimientos ≤7 días (dedupe diario en el server).
+        fetch(
+          `/api/cron/recordatorios-vencimiento?tutorId=${encodeURIComponent(tutor.id)}`,
+          { method: "POST", keepalive: true },
+        ).catch(() => {});
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "No se pudieron cargar recordatorios.");
@@ -90,64 +100,72 @@ export default function RecordatoriosSection({ tutor }) {
 
   const hoy = new Date().toISOString().slice(0, 10);
 
-  const vacunasProx = (data.vacunas || []).filter(
-    (v) => v.proxima_fecha && v.proxima_fecha >= hoy,
+  const vacunasProx = (data.vacunas || []).filter((v) =>
+    enVentanaRecordatorio(v.proxima_fecha),
   );
-  const desparasProx = (data.desparasitaciones || []).filter(
-    (d) => d.proxima_fecha && d.proxima_fecha >= hoy,
+  const desparasProx = (data.desparasitaciones || []).filter((d) =>
+    enVentanaRecordatorio(d.proxima_fecha),
   );
   const controles = (data.recordatorios || []).filter(
-    (r) => r.tipo === "control" && (!r.fecha_proxima || r.fecha_proxima >= hoy),
+    (r) => r.tipo === "control" && enVentanaRecordatorio(r.fecha_proxima),
   );
   const medicacion = (data.recordatorios || []).filter(
-    (r) => r.tipo === "medicacion" && (!r.fecha_proxima || r.fecha_proxima >= hoy),
+    (r) => r.tipo === "medicacion" && enVentanaRecordatorio(r.fecha_proxima),
   );
   const otros = (data.recordatorios || []).filter(
     (r) =>
       r.tipo !== "control" &&
       r.tipo !== "medicacion" &&
-      (!r.fecha_proxima || r.fecha_proxima >= hoy),
+      enVentanaRecordatorio(r.fecha_proxima),
   );
 
   const timeline = useMemo(() => {
     const rows = [];
     for (const v of vacunasProx) {
+      const dias = diasHastaFecha(v.proxima_fecha);
       rows.push({
         id: `vac-${v.origen || "c"}-${v.id}`,
         tipo: "Vacuna",
         title: `${v.mascota_nombre || v.clinica_pacientes?.nombre || "Mascota"} · ${v.nombre}`,
         date: v.proxima_fecha,
+        diasLabel: etiquetaDiasVencimiento(dias),
         sort: fechaSortKey(v.proxima_fecha),
       });
     }
     for (const d of desparasProx) {
+      const dias = diasHastaFecha(d.proxima_fecha);
       rows.push({
         id: `desp-${d.id}`,
         tipo: "Desparasitación",
         title: `${d.mascota_nombre || d.clinica_pacientes?.nombre || "Mascota"} · ${d.producto}`,
         date: d.proxima_fecha,
+        diasLabel: etiquetaDiasVencimiento(dias),
         sort: fechaSortKey(d.proxima_fecha),
       });
     }
     for (const r of [...controles, ...medicacion, ...otros]) {
+      const dias = diasHastaFecha(r.fecha_proxima);
       rows.push({
         id: `rec-${r.origen || "c"}-${r.id}`,
         tipo: r.tipo === "medicacion" ? "Medicación" : r.tipo === "control" ? "Control" : "Recordatorio",
         title: `${r.mascota_nombre || r.clinica_pacientes?.nombre || "Mascota"} · ${r.titulo}`,
         date: r.fecha_proxima,
+        diasLabel: etiquetaDiasVencimiento(dias),
         detail: r.detalle,
         sort: fechaSortKey(r.fecha_proxima),
       });
     }
     for (const c of data.citasProximas || []) {
       const inicio = c.inicio ? String(c.inicio).slice(0, 10) : null;
-      if (inicio && inicio < hoy) continue;
+      if (!enVentanaRecordatorio(inicio)) continue;
+      const dias = diasHastaFecha(inicio);
       rows.push({
         id: `cita-${c.id}`,
         tipo: "Cita",
         title: `${c.clinica_pacientes?.nombre || "Mascota"} · ${c.clinicas?.nombre || "Clínica"}`,
         date: c.inicio,
         dateLabel: c.inicio ? formatDateTime(c.inicio) : null,
+        diasLabel: etiquetaDiasVencimiento(dias),
         detail: c.motivo || null,
         sort: fechaSortKey(c.inicio),
       });
@@ -160,8 +178,7 @@ export default function RecordatoriosSection({ tutor }) {
       <div>
         <h2 className="text-lg font-semibold text-aguara-ink">Recordatorios</h2>
         <p className="text-sm text-stone-500">
-          Todo lo programado a partir de hoy: citas, vacunas, desparasitaciones, controles y
-          medicación
+          Vencimientos de los próximos 7 días. Te avisamos por push con los días restantes.
         </p>
       </div>
 
@@ -174,9 +191,11 @@ export default function RecordatoriosSection({ tutor }) {
       {loading ? <p className="text-sm text-stone-500">Cargando…</p> : null}
 
       <div className={cardClass}>
-        <h3 className="font-semibold text-aguara-ink">Próximos (desde hoy)</h3>
+        <h3 className="font-semibold text-aguara-ink">Próximos 7 días</h3>
         {!loading && timeline.length === 0 ? (
-          <p className="mt-3 text-sm text-stone-500">No hay pendientes con fecha desde hoy.</p>
+          <p className="mt-3 text-sm text-stone-500">
+            No hay vencimientos en la próxima semana.
+          </p>
         ) : (
           <ul className="mt-3 divide-y divide-stone-100">
             {timeline.map((item) => (
@@ -188,9 +207,14 @@ export default function RecordatoriosSection({ tutor }) {
                   <p className="font-medium text-aguara-ink">{item.title}</p>
                   {item.detail ? <p className="text-stone-500">{item.detail}</p> : null}
                 </div>
-                <p className="shrink-0 text-stone-600">
-                  {item.dateLabel || (item.date ? formatDate(String(item.date).slice(0, 10)) : "—")}
-                </p>
+                <div className="shrink-0 text-right">
+                  <p className="font-medium text-aguara-ink">
+                    {item.diasLabel || "—"}
+                  </p>
+                  <p className="text-stone-600">
+                    {item.dateLabel || (item.date ? formatDate(String(item.date).slice(0, 10)) : "—")}
+                  </p>
+                </div>
               </li>
             ))}
           </ul>
@@ -199,32 +223,35 @@ export default function RecordatoriosSection({ tutor }) {
 
       <div className="grid gap-5 lg:grid-cols-2">
         <ReminderCard
-          title="Vacunas próximas"
-          empty="Sin vacunas próximas desde hoy."
+          title="Vacunas (próximos 7 días)"
+          empty="Sin vacunas por vencer esta semana."
           items={vacunasProx.map((v) => ({
             id: `${v.origen || "clinica"}-${v.id}`,
             title: `${v.mascota_nombre || v.clinica_pacientes?.nombre || "Mascota"} · ${v.nombre}`,
             date: v.proxima_fecha,
+            diasLabel: etiquetaDiasVencimiento(diasHastaFecha(v.proxima_fecha)),
             origen: v.origen,
           }))}
         />
         <ReminderCard
-          title="Desparasitaciones (caducidad)"
-          empty="Sin desparasitaciones con caducidad desde hoy."
+          title="Desparasitaciones (próximos 7 días)"
+          empty="Sin desparasitaciones por vencer esta semana."
           items={desparasProx.map((d) => ({
             id: d.id,
             title: `${d.mascota_nombre || d.clinica_pacientes?.nombre || "Mascota"} · ${d.producto}`,
             date: d.proxima_fecha,
+            diasLabel: etiquetaDiasVencimiento(diasHastaFecha(d.proxima_fecha)),
             detail: "Caducidad / próxima dosis",
           }))}
         />
         <ReminderCard
-          title="Controles"
-          empty="Sin controles programados."
+          title="Controles (próximos 7 días)"
+          empty="Sin controles por vencer esta semana."
           items={controles.map((r) => ({
             id: `${r.origen || "clinica"}-${r.id}`,
             title: `${r.mascota_nombre || r.clinica_pacientes?.nombre || "Mascota"} · ${r.titulo}`,
             date: r.fecha_proxima,
+            diasLabel: etiquetaDiasVencimiento(diasHastaFecha(r.fecha_proxima)),
             detail: r.detalle,
             origen: r.origen,
           }))}
@@ -260,6 +287,9 @@ function ReminderCard({ title, empty, items }) {
               <p className="font-medium text-aguara-ink">{item.title}</p>
               {origenLabel(item.origen) ? (
                 <p className="text-xs text-stone-500">{origenLabel(item.origen)}</p>
+              ) : null}
+              {item.diasLabel ? (
+                <p className="font-medium text-aguara-orange">{item.diasLabel}</p>
               ) : null}
               {item.date ? (
                 <p className="text-stone-600">Fecha: {formatDate(item.date)}</p>
@@ -360,7 +390,12 @@ function MedicacionCard({ tutor, mascotas, items, onChanged, onError }) {
                   {r.origen === "tutor" ? "cargado por vos" : "cargado por la clínica"}
                 </p>
                 {r.fecha_proxima ? (
-                  <p className="text-stone-600">Fecha: {formatDate(r.fecha_proxima)}</p>
+                  <>
+                    <p className="font-medium text-aguara-orange">
+                      {etiquetaDiasVencimiento(diasHastaFecha(r.fecha_proxima))}
+                    </p>
+                    <p className="text-stone-600">Fecha: {formatDate(r.fecha_proxima)}</p>
+                  </>
                 ) : null}
                 {r.detalle ? <p className="text-stone-500">{r.detalle}</p> : null}
               </div>

@@ -17,6 +17,7 @@ import {
   endOfDayISO,
   esCitaPasada,
   etiquetaEstado,
+  liberarHorarioCitaCancelada,
   listarCitasPendientes,
   listarCitasRango,
   listarClientes,
@@ -31,6 +32,7 @@ import {
   generarSlotsDisponibles,
   horariosDeVeterinario,
 } from "@/lib/chapitas/tutorPortal";
+import { confirmAccion } from "@/lib/confirmAction";
 
 const SLOT_MINUTES = 30;
 const ROW_PX = 44;
@@ -283,12 +285,35 @@ export default function AgendaSection({
       setMessage(
         estado === "finalizada" && result?.consulta_creada?.id
           ? "Cita realizada. Se creó la historia clínica pendiente de completar."
-          : "",
+          : estado === "cancelada"
+            ? "Cita cancelada. Podés aceptar la cancelación para liberar el horario."
+            : "",
       );
       await reload();
     } catch (err) {
       setMessage("");
       setError(err instanceof Error ? err.message : "No se pudo cambiar el estado.");
+    }
+  }
+
+  async function onAceptarCancelacion(cita) {
+    if (!cita?.id) return;
+    if (
+      !(await confirmAccion(
+        "¿Aceptar la cancelación y liberar el horario? Vas a poder cargar otra cita en ese turno.",
+      ))
+    ) {
+      return;
+    }
+    try {
+      await liberarHorarioCitaCancelada(cita.id);
+      setSelectedCita(null);
+      setError("");
+      setMessage("Horario liberado. Ya podés cargar una nueva cita en ese turno.");
+      await reload();
+    } catch (err) {
+      setMessage("");
+      setError(err instanceof Error ? err.message : "No se pudo liberar el horario.");
     }
   }
 
@@ -310,8 +335,17 @@ export default function AgendaSection({
   }
 
   function openReprogramar(cita) {
+    if (!cita?.id) {
+      setError("No se pudo abrir la reprogramación (cita sin id).");
+      return;
+    }
     setSelectedCita(cita);
-    setEditing(cita);
+    // Reprogramar desde clínica = actualizar la misma cita (no crear otra).
+    // Si venía “A confirmar”, el nuevo horario queda confirmado.
+    setEditing({
+      ...cita,
+      estado: cita.estado === "pendiente" ? "confirmada" : cita.estado,
+    });
     setDefaultDay(cita?.inicio ? new Date(cita.inicio) : new Date());
     setShowForm(true);
     requestAnimationFrame(() => {
@@ -445,10 +479,11 @@ export default function AgendaSection({
                     {cita.inicio ? formatDateTime(cita.inicio) : "Sin horario"}
                   </span>
                   <span className="mt-0.5 block text-xs text-yellow-900/80">
-                    {cita.clinica_clientes?.nombre_completo || "Tutor"}
+                    Cliente: {cita.clinica_clientes?.nombre_completo || "—"}
                     {cita.clinica_veterinarios?.nombre
-                      ? ` · ${cita.clinica_veterinarios.nombre}`
-                      : ""}
+                      ? ` · Vet: ${cita.clinica_veterinarios.nombre}`
+                      : " · Sin vet"}
+                    {cita.motivo ? ` · ${cita.motivo}` : ""}
                   </span>
                 </button>
                 <div className="flex flex-wrap gap-2">
@@ -492,9 +527,10 @@ export default function AgendaSection({
                 {selectedCita.inicio ? formatDateTime(selectedCita.inicio) : "Sin horario"}
               </p>
               <p className="mt-1 text-sm text-stone-500">
-                {selectedCita.clinica_veterinarios?.nombre || "Sin vet"} ·{" "}
-                {selectedCita.clinica_clientes?.nombre_completo || "—"}
-                {selectedCita.motivo ? ` · ${selectedCita.motivo}` : ""}
+                Cliente: {selectedCita.clinica_clientes?.nombre_completo || "—"}
+                {" · "}
+                Vet: {selectedCita.clinica_veterinarios?.nombre || "Sin vet"}
+                {selectedCita.motivo ? ` · Motivo: ${selectedCita.motivo}` : ""}
               </p>
             </div>
             <EstadoBadge
@@ -558,6 +594,15 @@ export default function AgendaSection({
                 </button>
               </>
             ) : null}
+            {["cancelada", "no_asistio"].includes(selectedCita.estado) ? (
+              <button
+                type="button"
+                className="rounded-full bg-aguara-orange px-3 py-1.5 text-xs font-medium text-white"
+                onClick={() => onAceptarCancelacion(selectedCita)}
+              >
+                Aceptar cancelación · liberar horario
+              </button>
+            ) : null}
             <button
               type="button"
               className="rounded-full border border-stone-200 px-2.5 py-1 text-xs text-stone-500"
@@ -570,20 +615,26 @@ export default function AgendaSection({
       ) : (
         <p className="text-sm text-stone-500">
           Tocá un turno en el calendario o en la lista de pendientes para Confirmar, Cancelar o
-          Reprogramar.
+          Reprogramar. Si está cancelado, aceptá la cancelación para liberar el horario.
         </p>
       )}
 
       {showForm ? (
         <div id="agenda-cita-form">
           <CitaForm
-            key={editing?.id || editing?.inicio || "nueva-cita"}
+            key={editing?.id ? `edit-${editing.id}` : `new-${editing?.inicio || "cita"}`}
             clinicaId={clinicaId}
             pacientes={pacientes}
             clientes={clientes}
             vets={vets}
             servicios={servicios}
-            initial={editing}
+            citaId={editing?.id || null}
+            omitirPendiente={!editing?.id}
+            initial={
+              editing?.id
+                ? editing
+                : { ...(editing || {}), estado: editing?.estado || "confirmada" }
+            }
             defaultDay={defaultDay}
             onPacientesChange={setPacientes}
             onClientesChange={setClientes}
@@ -592,9 +643,11 @@ export default function AgendaSection({
               setEditing(null);
             }}
             onSaved={async () => {
+              const wasEdit = Boolean(editing?.id);
               setShowForm(false);
               setEditing(null);
               setSelectedCita(null);
+              setMessage(wasEdit ? "Cita reprogramada." : "Cita creada.");
               await reload();
             }}
           />

@@ -143,7 +143,7 @@ export default function TutorRegistro() {
         Crear cuenta
       </h1>
       <p className="mt-2 text-center text-sm leading-6 text-stone-600">
-        Registrá tus datos y la primera mascota. Después podés vincular una chapita QR o sumar más
+        Registrá tus datos y la primera mascota. Después podés vincular un identificador QR o sumar más
         animales desde el panel. Por ahora la contraseña es el mismo email.
       </p>
 
@@ -250,7 +250,7 @@ export default function TutorRegistro() {
           <div>
             <h2 className="text-lg font-semibold text-aguara-ink">Tu mascota</h2>
             <p className="mt-1 text-sm text-stone-500">
-              Se crea sin chapita. Cuando tengas el QR, la vinculás desde el panel.
+              Se crea sin identificador. Cuando tengas el QR, lo vinculás desde el panel.
             </p>
           </div>
           <MascotaRegistroFields
@@ -290,7 +290,7 @@ export default function TutorRegistro() {
         </Link>
       </p>
       <p className="mt-2 text-center text-sm text-stone-500">
-        ¿Tenés chapita física?{" "}
+        ¿Tenés identificador físico?{" "}
         <Link
           href="/mascota/T1-001"
           className="font-medium text-aguara-orange hover:text-aguara-orange-deep"

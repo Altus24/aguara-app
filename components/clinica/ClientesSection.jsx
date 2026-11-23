@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import CitaForm from "@/components/clinica/CitaForm";
+import { ConsultaForm } from "@/components/clinica/HistoriasSection";
 import {
   cardClass,
   Field,
@@ -19,10 +21,13 @@ import {
   listarPacientesDeCliente,
   listarPagos,
   listarSolicitudesPerfilClinica,
+  listarVeterinarios,
   money,
   obtenerCliente,
   proponerOActualizarDatosTutor,
 } from "@/lib/chapitas/clinicaOps";
+import { listarServiciosActivos } from "@/lib/chapitas/clinicas";
+import { confirmGuardar } from "@/lib/confirmAction";
 
 export default function ClientesSection({ clinicaId, clinicaNombre }) {
   const [q, setQ] = useState("");
@@ -146,6 +151,7 @@ function NuevoClienteForm({ clinicaId, onCreated }) {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (!(await confirmGuardar(`el cliente “${form.nombre_completo.trim()}”`))) return;
     setSaving(true);
     setError("");
     try {
@@ -228,10 +234,14 @@ function FichaCliente({ clinicaId, clinicaNombre, clienteId, onBack }) {
   const [pagos, setPagos] = useState([]);
   const [visitas, setVisitas] = useState([]);
   const [pendientes, setPendientes] = useState([]);
+  const [vets, setVets] = useState([]);
+  const [servicios, setServicios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [editing, setEditing] = useState(false);
+  const [showCitaForm, setShowCitaForm] = useState(false);
+  const [showConsultaForm, setShowConsultaForm] = useState(false);
   const [form, setForm] = useState({
     nombre_completo: "",
     email: "",
@@ -253,16 +263,20 @@ function FichaCliente({ clinicaId, clinicaNombre, clienteId, onBack }) {
     setLoading(true);
     setError("");
     try {
-      const [c, m, p, sols] = await Promise.all([
+      const [c, m, p, sols, vetsRows, serviciosRows] = await Promise.all([
         obtenerCliente(clienteId),
         listarPacientesDeCliente(clienteId),
         listarPagos(clinicaId, { clienteId }),
         listarSolicitudesPerfilClinica(clinicaId, { soloPendientes: true }),
+        listarVeterinarios(clinicaId),
+        listarServiciosActivos(clinicaId),
       ]);
       setCliente(c);
       setMascotas(m);
       setPagos(p);
       setPendientes((sols || []).filter((s) => s.cliente_id === clienteId));
+      setVets((vetsRows || []).filter((vet) => vet.activo !== false));
+      setServicios(serviciosRows || []);
       setForm({
         nombre_completo: c.nombre_completo || "",
         email: c.email || "",
@@ -289,6 +303,7 @@ function FichaCliente({ clinicaId, clinicaNombre, clienteId, onBack }) {
 
   async function handleSavePerfil(event) {
     event.preventDefault();
+    if (!(await confirmGuardar("los datos del cliente"))) return;
     setSavingEdit(true);
     setError("");
     setMessage("");
@@ -324,9 +339,37 @@ function FichaCliente({ clinicaId, clinicaNombre, clienteId, onBack }) {
 
   return (
     <div className="space-y-5">
-      <button type="button" className={secondaryBtnClass} onClick={onBack}>
-        ← Volver
-      </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <button type="button" className={secondaryBtnClass} onClick={onBack}>
+          ← Volver
+        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={secondaryBtnClass}
+            onClick={() => {
+              setShowConsultaForm(false);
+              setShowCitaForm((v) => !v);
+              setMessage("");
+              setError("");
+            }}
+          >
+            {showCitaForm ? "Cerrar cita" : "Nueva cita"}
+          </button>
+          <button
+            type="button"
+            className={primaryBtnClass}
+            onClick={() => {
+              setShowCitaForm(false);
+              setShowConsultaForm((v) => !v);
+              setMessage("");
+              setError("");
+            }}
+          >
+            {showConsultaForm ? "Cerrar consulta" : "Nueva consulta"}
+          </button>
+        </div>
+      </div>
 
       <div className={cardClass}>
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -449,6 +492,48 @@ function FichaCliente({ clinicaId, clinicaNombre, clienteId, onBack }) {
         {message ? <p className="mt-3 text-sm text-emerald-700">{message}</p> : null}
       </div>
 
+      {showCitaForm ? (
+        <CitaForm
+          clinicaId={clinicaId}
+          pacientes={mascotas}
+          clientes={[cliente]}
+          vets={vets}
+          servicios={servicios}
+          omitirPendiente
+          initial={{
+            cliente_id: clienteId,
+            estado: "confirmada",
+          }}
+          defaultDay={new Date()}
+          onCancel={() => setShowCitaForm(false)}
+          onPacientesChange={setMascotas}
+          onSaved={async () => {
+            setShowCitaForm(false);
+            setMessage("Cita creada y confirmada.");
+            await load();
+          }}
+        />
+      ) : null}
+
+      {showConsultaForm ? (
+        <ConsultaForm
+          clinicaId={clinicaId}
+          pacientes={mascotas}
+          clientes={[cliente]}
+          vets={vets}
+          initial={{
+            cliente_id: clienteId,
+          }}
+          onCancel={() => setShowConsultaForm(false)}
+          onPacientesChange={setMascotas}
+          onSaved={async () => {
+            setShowConsultaForm(false);
+            setMessage("Consulta / historia clínica creada.");
+            await load();
+          }}
+        />
+      ) : null}
+
       <div className="grid gap-5 lg:grid-cols-2">
         <div className={cardClass}>
           <h3 className="font-semibold text-aguara-ink">Mascotas asociadas</h3>
@@ -489,6 +574,7 @@ function FichaCliente({ clinicaId, clinicaNombre, clienteId, onBack }) {
           className="mt-4 grid gap-3 sm:grid-cols-4"
           onSubmit={async (e) => {
             e.preventDefault();
+            if (!(await confirmGuardar("el pago"))) return;
             setSavingPago(true);
             try {
               await crearPago(clinicaId, {

@@ -118,7 +118,7 @@ export default function TutorLogin() {
         </Link>
       </p>
       <p className="mt-2 text-center text-sm text-stone-500">
-        ¿Tenés chapita?{" "}
+        ¿Tenés identificador?{" "}
         <Link
           href="/mascota/T1-001"
           className="font-medium text-aguara-orange hover:text-aguara-orange-deep"

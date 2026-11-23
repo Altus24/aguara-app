@@ -153,7 +153,7 @@ function AdminEditMascotaModal({ mascota, onClose, onSaved }) {
             <h2 id="edit-mascota-title" className="text-xl font-semibold text-orange-700">
               Editar ficha
             </h2>
-            <p className="text-sm text-gray-500 mt-1">Chapita ID: {mascota.id}</p>
+            <p className="text-sm text-gray-500 mt-1">Identificador: {mascota.id}</p>
           </div>
           <button
             type="button"

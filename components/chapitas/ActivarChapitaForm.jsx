@@ -209,13 +209,13 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!(await confirmGuardar('la activación de la chapita'))) return;
+    if (!(await confirmGuardar('la activación del identificador'))) return;
     setError('');
     if (!validatePet()) return;
 
     const insertId = getCanonicalInsertChapitaId(chapitaId);
     if (!insertId) {
-      setError('Identificador de chapita no válido.');
+      setError('Identificador no válido.');
       return;
     }
 
@@ -340,13 +340,13 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
 
       if (insertError) {
         if (insertError.code === '23505') {
-          setError('Esta chapita ya fue activada.');
+          setError('Este identificador ya fue activado.');
         } else if (/column|tutor_id|schema cache|does not exist/i.test(insertError.message || '')) {
           setError(
             'Faltan columnas de tutores. Ejecutá supabase/chapitas/09_tutores.sql en Supabase.',
           );
         } else {
-          setError('No se pudo activar la chapita. Intentá nuevamente.');
+          setError('No se pudo activar el identificador. Intentá nuevamente.');
         }
         setSubmitting(false);
         return;
@@ -365,7 +365,7 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
   return (
     <form onSubmit={handleSubmit} className="mx-auto mt-8 max-w-xl space-y-6 rounded-lg bg-white p-6 shadow-md">
       <div className="text-center">
-        <h2 className="text-xl font-semibold text-orange-700 mb-2">Activar chapita {chapitaId}</h2>
+        <h2 className="text-xl font-semibold text-orange-700 mb-2">Activar identificador {chapitaId}</h2>
         <p className="text-gray-600">
           Un mismo tutor puede vincular varias mascotas. Primero el tutor, después el animal.
         </p>
@@ -608,7 +608,7 @@ function ActivarChapitaForm({ chapitaId, onActivated }) {
             disabled={submitting}
             className="w-full rounded-md bg-orange-600 px-4 py-3 font-semibold text-white hover:bg-orange-700 disabled:opacity-60"
           >
-            {submitting ? 'Activando…' : 'Activar chapita'}
+            {submitting ? 'Activando…' : 'Activar identificador'}
           </button>
         </section>
       )}

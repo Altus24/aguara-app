@@ -179,7 +179,7 @@ export default function TutoresDirectorySection({ clinicaId, clinicaNombre }) {
           </dl>
           <h4 className="mt-4 text-sm font-semibold text-aguara-ink">Mascotas</h4>
           {perfil.mascotas.length === 0 ? (
-            <p className="mt-1 text-sm text-stone-500">Sin mascotas con chapita.</p>
+            <p className="mt-1 text-sm text-stone-500">Sin mascotas con identificador.</p>
           ) : (
             <ul className="mt-2 space-y-2 text-sm">
               {perfil.mascotas.map((m) => (

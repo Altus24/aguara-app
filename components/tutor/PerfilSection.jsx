@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { ClinicaLogoMark } from "@/components/clinica/ui";
 import {
   Field,
   cardClass,
@@ -199,10 +200,17 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
           </h3>
           {compartir.map((sol) => (
             <div key={sol.id} className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <p className="text-sm font-semibold text-amber-950">
-                {sol.clinicas?.nombre || "Clínica"}
-                {sol.clinicas?.ciudad ? ` · ${sol.clinicas.ciudad}` : ""}
-              </p>
+              <div className="flex items-center gap-3">
+                <ClinicaLogoMark
+                  logoUrl={sol.clinicas?.logo_url}
+                  nombre={sol.clinicas?.nombre}
+                  size={40}
+                />
+                <p className="text-sm font-semibold text-amber-950">
+                  {sol.clinicas?.nombre || "Clínica"}
+                  {sol.clinicas?.ciudad ? ` · ${sol.clinicas.ciudad}` : ""}
+                </p>
+              </div>
               <p className="mt-1 text-sm text-amber-900/80">
                 Quiere ver tus datos de contacto y una mascota que elijas. Sin aceptar solo ven tu
                 nombre y los nombres de tus mascotas.
@@ -232,7 +240,7 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
                 </select>
                 {mascotas.filter((m) => m.chapita_id).length === 0 ? (
                   <p className="mt-1 text-xs text-amber-800">
-                    Necesitás una mascota con chapita QR para compartir.
+                    Necesitás una mascota con identificador QR para compartir.
                   </p>
                 ) : null}
               </div>
@@ -311,10 +319,17 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
                 key={sol.id}
                 className="rounded-2xl border border-amber-200 bg-amber-50 p-4"
               >
-                <p className="text-sm font-semibold text-amber-950">
-                  {sol.clinicas?.nombre || "Clínica"}
-                  {sol.clinicas?.ciudad ? ` · ${sol.clinicas.ciudad}` : ""}
-                </p>
+                <div className="flex items-center gap-3">
+                  <ClinicaLogoMark
+                    logoUrl={sol.clinicas?.logo_url}
+                    nombre={sol.clinicas?.nombre}
+                    size={40}
+                  />
+                  <p className="text-sm font-semibold text-amber-950">
+                    {sol.clinicas?.nombre || "Clínica"}
+                    {sol.clinicas?.ciudad ? ` · ${sol.clinicas.ciudad}` : ""}
+                  </p>
+                </div>
                 <p className="mt-1 text-sm text-amber-900/80">
                   Proponen actualizar tu información. Solo se aplica si aceptás.
                 </p>
@@ -355,13 +370,13 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
 
       {!tieneChapita ? (
         <div className="rounded-2xl border border-aguara-orange/30 bg-aguara-cream/50 p-5">
-          <p className="text-sm font-semibold text-aguara-ink">Conseguí tu chapita QR Aguará</p>
+          <p className="text-sm font-semibold text-aguara-ink">Conseguí tu identificador QR Aguará</p>
           <p className="mt-1 text-sm text-stone-600">
-            Todavía no tenés un QR registrado. Con la chapita tu mascota queda identificada si se
+            Todavía no tenés un QR registrado. Con el identificador tu mascota queda identificada si se
             pierde y vinculás su ficha a tu cuenta en segundos.
           </p>
           <Link href="/" className={`${primaryBtnClass} mt-4`}>
-            Activar / comprar chapita
+            Activar / comprar identificador
           </Link>
         </div>
       ) : null}
@@ -567,6 +582,25 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
                 </option>
               ))}
             </select>
+            {(() => {
+              const preferida = clinicas.find((c) => c.id === form.clinica_preferida_id);
+              if (!preferida) return null;
+              return (
+                <div className="mt-2 flex items-center gap-3 rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-2">
+                  <ClinicaLogoMark
+                    logoUrl={preferida.logo_url}
+                    nombre={preferida.nombre}
+                    size={40}
+                  />
+                  <div className="min-w-0 text-sm">
+                    <p className="font-medium text-aguara-ink">{preferida.nombre}</p>
+                    {preferida.ciudad ? (
+                      <p className="text-stone-500">{preferida.ciudad}</p>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })()}
           </Field>
         </div>
 

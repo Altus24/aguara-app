@@ -141,7 +141,7 @@ export default function MascotasSection({ tutor }) {
     setMessage("");
     try {
       await crearMascotaSinChapita(tutor, petForm, { foto });
-      setMessage("Mascota creada. Cuando tengas la chapita, podés vincularla.");
+      setMessage("Mascota creada. Cuando tengas el identificador, podés vincularlo.");
       resetForms();
       setMode(null);
       await reload();
@@ -156,10 +156,10 @@ export default function MascotasSection({ tutor }) {
     event.preventDefault();
     event.stopPropagation();
     if (!mascotaDigitalId) {
-      setError("Elegí la mascota a la que querés vincular la chapita.");
+      setError("Elegí la mascota a la que querés vincular el identificador.");
       return;
     }
-    if (!(await confirmGuardar("el vínculo de la chapita a la mascota"))) return;
+    if (!(await confirmGuardar("el vínculo del identificador a la mascota"))) return;
     setSaving(true);
     setError("");
     setMessage("");
@@ -171,12 +171,12 @@ export default function MascotasSection({ tutor }) {
         mascotaDigitalId,
         chapitaCodigo: check.id,
       });
-      setMessage(`Chapita ${result.chapita_id || check.id} vinculada.`);
+      setMessage(`Identificador ${result.chapita_id || check.id} vinculado.`);
       resetForms();
       setMode(null);
       await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo vincular la chapita.");
+      setError(err instanceof Error ? err.message : "No se pudo vincular el identificador.");
     } finally {
       setSaving(false);
     }
@@ -188,7 +188,7 @@ export default function MascotasSection({ tutor }) {
         <div>
           <h2 className="text-lg font-semibold text-aguara-ink">Mis mascotas</h2>
           <p className="text-sm text-stone-500">
-            Creá el perfil sin chapita y vinculala después con el código del QR
+            Creá el perfil sin identificador y vinculalo después con el código del QR
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -212,7 +212,7 @@ export default function MascotasSection({ tutor }) {
               setMascotaDigitalId(first);
             }}
           >
-            Vincular chapita
+            Vincular identificador
           </button>
         </div>
       </div>
@@ -226,9 +226,9 @@ export default function MascotasSection({ tutor }) {
 
       {mode === "crear" ? (
         <form onSubmit={handleCrear} className={`${cardClass} space-y-4`}>
-          <h3 className="font-semibold text-aguara-ink">Nueva mascota (sin chapita)</h3>
+          <h3 className="font-semibold text-aguara-ink">Nueva mascota (sin identificador)</h3>
           <p className="text-sm text-stone-500">
-            Mismos datos que al activar una chapita. Después podés vincular el QR.
+            Mismos datos que al activar un identificador. Después podés vincular el QR.
           </p>
           <MascotaRegistroFields
             form={petForm}
@@ -253,18 +253,18 @@ export default function MascotasSection({ tutor }) {
 
       {mode === "vincular" ? (
         <form onSubmit={handleVincular} className={`${cardClass} space-y-4`}>
-          <h3 className="font-semibold text-aguara-ink">Vincular chapita QR</h3>
+          <h3 className="font-semibold text-aguara-ink">Vincular identificador QR</h3>
           <p className="text-sm text-stone-500">
-            Ingresá el código impreso en la chapita (ej. T2-015 o el de 8 caracteres).
+            Ingresá el código impreso en el identificador (ej. T2-015 o el de 8 caracteres).
           </p>
           {digitales.length === 0 ? (
             <p className="text-sm text-amber-800">
-              No tenés mascotas sin chapita. Primero creá una con “Agregar mascota”.
+              No tenés mascotas sin identificador. Primero creá una con “Agregar mascota”.
             </p>
           ) : (
             <>
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-stone-700">Mascota sin chapita</span>
+                <span className="mb-1 block font-medium text-stone-700">Mascota sin identificador</span>
                 <select
                   required
                   className={fieldClass}
@@ -280,7 +280,7 @@ export default function MascotasSection({ tutor }) {
                 </select>
               </label>
               <label className="block text-sm">
-                <span className="mb-1 block font-medium text-stone-700">Código de la chapita</span>
+                <span className="mb-1 block font-medium text-stone-700">Código del identificador</span>
                 <input
                   required
                   placeholder="Ej: T2-015"
@@ -291,7 +291,7 @@ export default function MascotasSection({ tutor }) {
               </label>
               <div className="flex flex-wrap gap-2">
                 <button type="submit" disabled={saving} className={primaryBtnClass}>
-                  {saving ? "Vinculando…" : "Vincular chapita"}
+                  {saving ? "Vinculando…" : "Vincular identificador"}
                 </button>
                 <button type="button" className={secondaryBtnClass} onClick={() => setMode(null)}>
                   Cancelar
@@ -307,7 +307,7 @@ export default function MascotasSection({ tutor }) {
           <p className="text-sm text-stone-500">Cargando…</p>
         ) : mascotas.length === 0 ? (
           <p className="text-sm text-stone-600">
-            Todavía no tenés mascotas. Creá una sin chapita o activá un QR.
+            Todavía no tenés mascotas. Creá una sin identificador o activá un QR.
           </p>
         ) : (
           <ul className="grid gap-4 sm:grid-cols-2">
@@ -330,13 +330,18 @@ export default function MascotasSection({ tutor }) {
                   <span className="min-w-0 flex-1">
                     <span className="block font-semibold text-aguara-ink">
                       {m.nombre}
+                      {m.perdida ? (
+                        <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-800">
+                          perdida
+                        </span>
+                      ) : null}
                       {m.sin_chapita ? (
                         <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900">
-                          sin chapita
+                          sin identificador
                         </span>
                       ) : m.chapita_id ? (
                         <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
-                          chapita
+                          identificador
                         </span>
                       ) : m.origen === "clinico" ? (
                         <span className="ml-2 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-700">
@@ -353,7 +358,7 @@ export default function MascotasSection({ tutor }) {
                       {m.sin_chapita
                         ? " · Sin QR todavía"
                         : m.chapita_id
-                          ? ` · Chapita ${m.chapita_id}`
+                          ? ` · Identificador ${m.chapita_id}`
                           : ""}
                     </span>
                   </span>

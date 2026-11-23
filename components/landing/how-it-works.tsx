@@ -4,7 +4,7 @@ const steps = [
   {
     icon: QrCode,
     title: "Escaneá el QR",
-    body: "El collar abre la chapita en Aguará. Si está libre, aparece el formulario de registro.",
+    body: "El collar abre el identificador en Aguará. Si está libre, aparece el formulario de registro.",
   },
   {
     icon: UserRound,
@@ -14,7 +14,7 @@ const steps = [
   {
     icon: Link2,
     title: "Vinculá la mascota",
-    body: "Cada chapita guarda una mascota. Varias pueden quedar linkeadas al mismo tutor.",
+    body: "Cada identificador guarda una mascota. Varias pueden quedar linkeadas al mismo tutor.",
   },
   {
     icon: Smartphone,
@@ -32,7 +32,7 @@ export function HowItWorks() {
           Del QR al registro: tutor y mascotas en la app
         </h2>
         <p className="mt-4 max-w-2xl text-sm leading-6 text-stone-600">
-          Un tutor, varias mascotas. La segunda chapita no vuelve a pedir todos los datos: buscás el
+          Un tutor, varias mascotas. El segundo identificador no vuelve a pedir todos los datos: buscás el
           tutor y solo cargás el animal nuevo.
         </p>
         <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">

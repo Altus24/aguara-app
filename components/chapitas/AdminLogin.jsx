@@ -49,7 +49,7 @@ function AdminLogin() {
     <section className="mx-auto max-w-md px-4 py-12">
       <h1 className="text-xl font-semibold text-blue-800 text-center mb-2">Acceso superadmin</h1>
       <p className="text-gray-600 text-center mb-8">
-        Ingresá para generar chapitas QR y gestionar mascotas.
+        Ingresá para generar identificadores QR y gestionar mascotas.
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-4 rounded-lg bg-white p-6 shadow-md">

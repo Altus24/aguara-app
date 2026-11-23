@@ -12,6 +12,7 @@ import DashboardSection from "@/components/clinica/DashboardSection";
 import HistoriasSection from "@/components/clinica/HistoriasSection";
 import PacientesSection from "@/components/clinica/PacientesSection";
 import TutoresDirectorySection from "@/components/clinica/TutoresDirectorySection";
+import { ClinicaLogoMark } from "@/components/clinica/ui";
 import { useClinicAuth } from "@/context/ClinicAuthContext";
 import {
   listarCitasPendientes,
@@ -114,12 +115,15 @@ export default function ClinicaPanel() {
   return (
     <section className="mx-auto w-full max-w-6xl px-4 py-8 sm:py-12">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="text-sm font-medium text-aguara-orange">Panel clínica</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-aguara-ink">
-            {clinica.nombre}
-          </h1>
-          <p className="mt-2 text-sm text-stone-600">{clinica.email}</p>
+        <div className="flex items-start gap-3">
+          <ClinicaLogoMark logoUrl={clinica.logo_url} nombre={clinica.nombre} size={56} />
+          <div>
+            <p className="text-sm font-medium text-aguara-orange">Panel clínica</p>
+            <h1 className="mt-1 text-3xl font-semibold tracking-tight text-aguara-ink">
+              {clinica.nombre}
+            </h1>
+            <p className="mt-2 text-sm text-stone-600">{clinica.email}</p>
+          </div>
         </div>
         <div className="flex flex-col items-start gap-2 sm:items-end">
           <PushEnableControl audience="clinica" audienceId={clinica.id} />

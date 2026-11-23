@@ -257,7 +257,7 @@ export default function AdminDashboard() {
   }, [tutores, registryQ, registryQuery]);
 
   const TABS = [
-    { id: 'chapitas', label: 'Chapitas' },
+    { id: 'chapitas', label: 'Identificadores' },
     { id: 'qr', label: 'Personalizar QR' },
     { id: 'clinicas', label: `Clínicas (${clinicas.length})` },
     { id: 'tutores', label: `Tutores (${tutores.length})` },
@@ -349,7 +349,7 @@ export default function AdminDashboard() {
 
 
   const handleDeleteMascota = async (id) => {
-    if (!(await confirmEliminar(`la ficha de la chapita ${formatChapitaIdLabel(id)}`))) return;
+    if (!(await confirmEliminar(`la ficha del identificador ${formatChapitaIdLabel(id)}`))) return;
     const { error } = await supabase.from('mascotas').delete().eq('id', id);
     if (error) {
       setMessage('No se pudo eliminar la mascota.');
@@ -524,7 +524,7 @@ export default function AdminDashboard() {
   const handleReiniciarInventario = async () => {
     if (
       !(await confirmAccion(
-        '¿Vaciar TODO el inventario de chapitas (todas las tiradas y fichas activadas)? Vas a poder crear T1 de nuevo desde cero.',
+        '¿Vaciar TODO el inventario de identificadores (todas las tiradas y fichas activadas)? Vas a poder crear T1 de nuevo desde cero.',
       ))
     ) {
       return;
@@ -945,7 +945,7 @@ export default function AdminDashboard() {
           {tab === 'chapitas' ? (
             <>
           <div className="mb-8 rounded-lg bg-white p-6 shadow-md">
-            <h2 className="text-xl font-semibold text-blue-700 mb-3">Inventario de chapitas</h2>
+            <h2 className="text-xl font-semibold text-blue-700 mb-3">Inventario de identificadores</h2>
             
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 text-sm mb-4">
               <div className="rounded-md bg-blue-50 p-4">
@@ -987,7 +987,7 @@ export default function AdminDashboard() {
                   >
                     {TIRADA_CANTIDAD_OPTIONS.map((n) => (
                       <option key={n} value={n}>
-                        {n} chapitas ({formatTiradaChapitaId(nextTirada, 1)}–
+                        {n} identificadores ({formatTiradaChapitaId(nextTirada, 1)}–
                         {formatTiradaChapitaId(nextTirada, n)})
                       </option>
                     ))}
@@ -1122,7 +1122,7 @@ export default function AdminDashboard() {
 
             <div className="mt-6 rounded-md border border-blue-100 bg-blue-50/60 p-4">
               <label htmlFor="buscar-chapita" className="block text-sm font-medium text-gray-700 mb-2">
-                Buscar chapita
+                Buscar identificador
               </label>
               <input
                 id="buscar-chapita"
@@ -1225,7 +1225,7 @@ export default function AdminDashboard() {
 
                     return (
                       <p className="text-gray-500">
-                        No se encontró ninguna chapita con “{searchQuery.trim()}”.
+                        No se encontró ningún identificador con “{searchQuery.trim()}”.
                       </p>
                     );
                   })()}
@@ -1236,7 +1236,7 @@ export default function AdminDashboard() {
 
           <div className="mb-10">
             <h2 className="text-xl font-semibold text-blue-700 mb-4">
-              Chapitas activadas ({mascotasActivadas.length})
+              Identificadores activados ({mascotasActivadas.length})
             </h2>
             <div className="overflow-x-auto rounded-lg bg-white shadow-md">
               <table className="min-w-full text-sm">
@@ -1307,7 +1307,7 @@ export default function AdminDashboard() {
                   {mascotasActivadas.length === 0 && (
                     <tr>
                       <td colSpan={7} className="p-4 text-center text-gray-500">
-                        Todavía no se activó ninguna chapita.
+                        Todavía no se activó ningún identificador.
                       </td>
                     </tr>
                   )}

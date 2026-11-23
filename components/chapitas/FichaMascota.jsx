@@ -112,9 +112,9 @@ function FichaMascota() {
 
   useEffect(() => {
     if (!mascota && chapitaId && canActivate) {
-      document.title = `Activar Chapita ${chapitaId} - Aguará App`;
+      document.title = `Activar identificador ${chapitaId} - Aguará App`;
     } else if (mascota) {
-      document.title = `${mascota.nombre_mascota} - Chapita Aguará`;
+      document.title = `${mascota.nombre_mascota} - Identificador Aguará`;
     }
   }, [mascota, chapitaId, canActivate]);
 
@@ -284,9 +284,9 @@ function FichaMascota() {
   if (!chapitaId) {
     return (
       <section className="mx-auto max-w-2xl px-4 py-16 text-center">
-        <h1 className="mb-4 text-xl font-semibold text-aguara-orange">Chapita no válida</h1>
+        <h1 className="mb-4 text-xl font-semibold text-aguara-orange">Identificador no válido</h1>
         <p className="mb-6 text-stone-600">
-          El identificador ingresado no es válido. Verificá el código grabado en la chapita.
+          El identificador ingresado no es válido. Verificá el código grabado en el identificador.
         </p>
         <Link href="/" className="text-aguara-orange underline hover:text-aguara-orange-deep">
           Volver al inicio
@@ -320,10 +320,10 @@ function FichaMascota() {
   if (!mascota && !canActivate) {
     return (
       <section className="mx-auto max-w-2xl px-4 py-16 text-center">
-        <h1 className="mb-4 text-xl font-semibold text-aguara-orange">Chapita no registrada</h1>
+        <h1 className="mb-4 text-xl font-semibold text-aguara-orange">Identificador no registrado</h1>
         <p className="mb-6 text-stone-600">
           El código <strong>{chapitaId}</strong> no está habilitado para activación. Si es tuya,
-          contactá a Aguará para generar una chapita válida.
+          contactá a Aguará para generar un identificador válido.
         </p>
         <Link href="/" className="text-aguara-orange underline hover:text-aguara-orange-deep">
           Volver al inicio
@@ -336,10 +336,10 @@ function FichaMascota() {
     return (
       <section className="mx-auto max-w-3xl px-4 py-10 sm:py-16">
         <h1 className="mb-4 text-center text-3xl font-bold text-aguara-orange sm:text-4xl">
-          Chapita Aguará
+          Identificador Aguará
         </h1>
         <p className="mx-auto max-w-2xl text-center text-stone-600">
-          Esta chapita (ID: <strong>{chapitaId}</strong>) aún no fue activada. Completá el
+          Este identificador (ID: <strong>{chapitaId}</strong>) aún no fue activado. Completá el
           formulario con los datos del tutor y del animal.
         </p>
         <ActivarChapitaForm chapitaId={chapitaId} onActivated={setMascota} />
@@ -369,13 +369,29 @@ function FichaMascota() {
         </div>
       </header>
 
-      <div className="bg-aguara-orange px-4 py-3 text-center text-sm font-semibold text-white shadow-sm">
-        Si encontraste esta mascota — ayudanos a reencontrarla con su tutor
+      <div
+        className={`px-4 py-3 text-center text-sm font-semibold text-white shadow-sm ${
+          mascota.perdida ? 'bg-red-600' : 'bg-aguara-orange'
+        }`}
+      >
+        {mascota.perdida
+          ? `¡${mascota.nombre_mascota || 'Esta mascota'} está perdida! Contactá al tutor`
+          : 'Si encontraste esta mascota — ayudanos a reencontrarla con su tutor'}
       </div>
 
       <main className="mx-auto max-w-lg px-4 py-6 pb-12">
         <article className="overflow-hidden rounded-3xl bg-white shadow-[0_12px_40px_rgba(26,19,17,0.08)] ring-1 ring-stone-100">
           <div className="p-5 sm:p-6">
+            {mascota.perdida ? (
+              <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-center">
+                <p className="text-sm font-bold uppercase tracking-wide text-red-800">
+                  Mascota perdida
+                </p>
+                <p className="mt-1 text-sm text-red-900/80">
+                  El tutor activó el aviso. Por favor contactalo y, si podés, compartí tu ubicación.
+                </p>
+              </div>
+            ) : null}
             <div className="overflow-hidden rounded-2xl bg-aguara-mist">
               {mascota.foto_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -534,7 +550,7 @@ function FichaMascota() {
           </section>
         )}
 
-        <p className="mt-6 text-center text-xs text-stone-400">Chapita {mascota.id}</p>
+        <p className="mt-6 text-center text-xs text-stone-400">Identificador {mascota.id}</p>
       </main>
     </div>
   );

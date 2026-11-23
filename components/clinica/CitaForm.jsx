@@ -83,11 +83,16 @@ export default function CitaForm({
   initial,
   defaultDay,
   lockPaciente = false,
+  /** Si true, no ofrece “A confirmar” (pensado para altas hechas por la clínica). */
+  omitirPendiente = false,
+  /** Id de cita existente: fuerza UPDATE y evita duplicar al reprogramar. */
+  citaId = null,
   onCancel,
   onSaved,
   onPacientesChange,
   onClientesChange,
 }) {
+  const editingId = citaId || initial?.id || null;
   const defaultStart = new Date(defaultDay || new Date());
   if (!initial?.inicio) {
     defaultStart.setHours(10, 0, 0, 0);
@@ -96,7 +101,7 @@ export default function CitaForm({
     toLocalInputValue(initial?.inicio) || toLocalInputFromDate(defaultStart);
   const finInicial =
     toLocalInputValue(initial?.fin) ||
-    (initial?.inicio || !initial?.id
+    (initial?.inicio || !editingId
       ? addMinutesToLocalInput(inicioInicial, SLOT_MINUTES)
       : "");
   const pacienteInicial = (pacientes || []).find((p) => p.id === initial?.paciente_id);
@@ -111,7 +116,6 @@ export default function CitaForm({
     motivo: initial?.motivo || "",
     notas: initial?.notas || "",
     vacuna_nombre: "",
-    vacuna_lote: "",
     vacuna_proxima_fecha: "",
     programar_recordatorio: true,
   });
@@ -397,7 +401,7 @@ export default function CitaForm({
       setError("Indicá el nombre de la vacuna aplicada o a aplicar.");
       return;
     }
-    if (!(await confirmGuardar(initial?.id ? "los cambios de la cita" : "la nueva cita"))) {
+    if (!(await confirmGuardar(editingId ? "los cambios de la cita" : "la nueva cita"))) {
       return;
     }
     setSaving(true);
@@ -408,7 +412,7 @@ export default function CitaForm({
           clinicaId,
           veterinarioId: form.veterinario_id,
           inicio: form.inicio,
-          citaIdExcluir: initial?.id,
+          citaIdExcluir: editingId,
           requerirVeterinario: true,
         });
       }
@@ -430,8 +434,9 @@ export default function CitaForm({
         motivo: form.motivo || (esVacunacion ? `Vacunación: ${form.vacuna_nombre.trim()}` : ""),
         notas: form.notas,
       };
-      if (initial?.id) {
-        await actualizarCita(initial.id, payload);
+      // Siempre UPDATE si hay id: reprogramar no debe crear otra cita.
+      if (editingId) {
+        await actualizarCita(editingId, payload);
       } else {
         await crearCita(clinicaId, payload);
       }
@@ -445,7 +450,6 @@ export default function CitaForm({
           nombre: form.vacuna_nombre.trim(),
           fecha: fechaVacuna,
           proxima_fecha: form.vacuna_proxima_fecha || null,
-          lote: form.vacuna_lote,
           veterinario_id: form.veterinario_id || null,
           notas: form.notas || null,
         });
@@ -456,9 +460,7 @@ export default function CitaForm({
             cliente_id: form.cliente_id || null,
             tipo: "vacuna",
             titulo: `Refuerzo: ${form.vacuna_nombre.trim()}`,
-            detalle: form.vacuna_lote
-              ? `Lote ${form.vacuna_lote}`
-              : "Recordatorio de vacunación",
+            detalle: "Recordatorio de vacunación",
             fecha_proxima: form.vacuna_proxima_fecha,
           });
         }
@@ -680,11 +682,20 @@ export default function CitaForm({
             value={form.estado}
             onChange={(e) => setForm((f) => ({ ...f, estado: e.target.value }))}
           >
-            {CITA_ESTADOS.filter((e) =>
-              ["pendiente", "confirmada", "lista_espera", "finalizada", "no_asistio", "cancelada"].includes(
-                e.id,
-              ),
-            ).map((e) => (
+            {CITA_ESTADOS.filter((e) => {
+              const allowed = [
+                "pendiente",
+                "confirmada",
+                "lista_espera",
+                "finalizada",
+                "no_asistio",
+                "cancelada",
+              ];
+              if (!allowed.includes(e.id)) return false;
+              // Altas desde clínica: “A confirmar” es para turnos pedidos por el tutor.
+              if (omitirPendiente && e.id === "pendiente" && !editingId) return false;
+              return true;
+            }).map((e) => (
               <option key={e.id} value={e.id}>
                 {e.label}
               </option>
@@ -754,14 +765,6 @@ export default function CitaForm({
                 onChange={(e) => setForm((f) => ({ ...f, vacuna_nombre: e.target.value }))}
               />
             </Field>
-            <Field label="Lote" id="cita-vac-lote">
-              <input
-                id="cita-vac-lote"
-                className={fieldClass}
-                value={form.vacuna_lote}
-                onChange={(e) => setForm((f) => ({ ...f, vacuna_lote: e.target.value }))}
-              />
-            </Field>
             <Field label="Próxima dosis / refuerzo" id="cita-vac-prox">
               <input
                 id="cita-vac-prox"
@@ -810,7 +813,7 @@ export default function CitaForm({
           }
           className={primaryBtnClass}
         >
-          {saving ? "Guardando…" : "Guardar"}
+          {saving ? "Guardando…" : editingId ? "Guardar cambios" : "Crear cita"}
         </button>
         <button type="button" className={secondaryBtnClass} onClick={onCancel}>
           Cancelar

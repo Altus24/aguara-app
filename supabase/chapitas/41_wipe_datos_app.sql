@@ -83,10 +83,12 @@ on conflict (id) do update
 set max_id_numerico = 100,
     tirada_actual = 1;
 
--- Fotos en Storage
+-- Fotos y archivos clínicos en Storage
 do $$
 begin
   delete from storage.objects where bucket_id = 'mascotas-fotos';
+  delete from storage.objects where bucket_id = 'clinica-archivos';
+  delete from storage.objects where bucket_id = 'clinica-logos';
 exception when others then
   raise notice 'storage wipe skipped: %', sqlerrm;
 end $$;

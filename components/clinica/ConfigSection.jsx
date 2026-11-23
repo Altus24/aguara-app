@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { confirmEliminar } from "@/lib/confirmAction";
 import SignaturePad from "@/components/clinica/SignaturePad";
@@ -48,11 +48,12 @@ import {
   listarProductos,
   listarServicios,
   listarServiciosGenerales,
+  subirLogoClinica,
 } from "@/lib/chapitas/clinicas";
 
 const SUBTABS = [
-  { id: "ubicacion", label: "Ubicación" },
-  { id: "horarios", label: "Horario local" },
+  { id: "ubicacion", label: "Perfil" },
+  { id: "horarios", label: "Horario" },
   { id: "vets", label: "Veterinarios" },
   { id: "servicios", label: "Servicios" },
   { id: "stock", label: "Stock" },
@@ -125,12 +126,54 @@ function Ubicacion({ clinica, onSaved }) {
     maps_url: clinica.maps_url || "",
     permite_citas_tutor: clinica.permite_citas_tutor !== false,
   });
+  const [logoUrl, setLogoUrl] = useState(clinica.logo_url || "");
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoPreview, setLogoPreview] = useState(clinica.logo_url || "");
+  const [quitarLogo, setQuitarLogo] = useState(false);
+  const logoInputRef = useRef(null);
+  const logoPreviewRef = useRef(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   const provincias = useMemo(() => provinciasDisponibles(), []);
   const ciudades = useMemo(() => ciudadesDeProvincia(form.provincia), [form.provincia]);
+
+  useEffect(() => {
+    setLogoUrl(clinica.logo_url || "");
+    setLogoPreview(clinica.logo_url || "");
+    setLogoFile(null);
+    setQuitarLogo(false);
+    if (logoInputRef.current) logoInputRef.current.value = "";
+  }, [clinica.id, clinica.logo_url]);
+
+  useEffect(() => {
+    return () => {
+      if (logoPreviewRef.current) URL.revokeObjectURL(logoPreviewRef.current);
+    };
+  }, []);
+
+  function onLogoChange(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setError("El logo tiene que ser JPG, PNG o WebP.");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setError("El logo no puede superar 2 MB.");
+      event.target.value = "";
+      return;
+    }
+    setError("");
+    if (logoPreviewRef.current) URL.revokeObjectURL(logoPreviewRef.current);
+    const url = URL.createObjectURL(file);
+    logoPreviewRef.current = url;
+    setLogoFile(file);
+    setLogoPreview(url);
+    setQuitarLogo(false);
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -140,6 +183,10 @@ function Ubicacion({ clinica, onSaved }) {
     setError("");
     setMessage("");
     try {
+      let nextLogoUrl = logoUrl || null;
+      if (quitarLogo) nextLogoUrl = null;
+      else if (logoFile) nextLogoUrl = await subirLogoClinica(clinica.id, logoFile);
+
       const updated = await actualizarClinica(clinica.id, {
         nombre: form.nombre.trim(),
         telefono: form.telefono.trim(),
@@ -149,7 +196,13 @@ function Ubicacion({ clinica, onSaved }) {
         descripcion: form.descripcion.trim() || null,
         maps_url: form.maps_url.trim() || null,
         permite_citas_tutor: Boolean(form.permite_citas_tutor),
+        logo_url: nextLogoUrl,
       });
+      setLogoUrl(updated.logo_url || "");
+      setLogoPreview(updated.logo_url || "");
+      setLogoFile(null);
+      setQuitarLogo(false);
+      if (logoInputRef.current) logoInputRef.current.value = "";
       onSaved?.(updated);
       setMessage("Ubicación guardada.");
     } catch (err) {
@@ -162,6 +215,53 @@ function Ubicacion({ clinica, onSaved }) {
   return (
     <form onSubmit={handleSubmit} className={`${cardClass} space-y-4`}>
       <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Logo de la clínica" id="cfg-logo" className="sm:col-span-2">
+          <div className="flex flex-wrap items-center gap-4">
+            {logoPreview ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoPreview}
+                alt={`Logo de ${form.nombre || "la clínica"}`}
+                className="h-20 w-20 rounded-xl border border-stone-200 bg-white object-contain p-1"
+              />
+            ) : (
+              <div className="flex h-20 w-20 items-center justify-center rounded-xl border border-dashed border-stone-300 bg-stone-50 text-xs text-stone-400">
+                Sin logo
+              </div>
+            )}
+            <div className="min-w-0 flex-1 space-y-2">
+              <input
+                ref={logoInputRef}
+                id="cfg-logo"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className={fieldClass}
+                onChange={onLogoChange}
+              />
+              <p className="text-xs text-stone-400">
+                JPG, PNG o WebP · máx. 2 MB. Lo ven los tutores en turnos y perfil.
+              </p>
+              {logoPreview || logoUrl ? (
+                <button
+                  type="button"
+                  className={secondaryBtnClass}
+                  onClick={() => {
+                    setQuitarLogo(true);
+                    setLogoFile(null);
+                    setLogoPreview("");
+                    if (logoPreviewRef.current) {
+                      URL.revokeObjectURL(logoPreviewRef.current);
+                      logoPreviewRef.current = null;
+                    }
+                    if (logoInputRef.current) logoInputRef.current.value = "";
+                  }}
+                >
+                  Quitar logo
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </Field>
         <Field label="Nombre" id="cfg-nombre">
           <input
             id="cfg-nombre"

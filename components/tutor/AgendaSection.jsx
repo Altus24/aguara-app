@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { ClinicaLogoMark } from "@/components/clinica/ui";
 import {
   EstadoBadge,
   Field,
@@ -124,7 +125,7 @@ export default function AgendaSection({ tutor, prefill = null, onPrefillConsumed
         <p className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-600">
           Para sacar un turno primero vinculá o registrá una mascota en{" "}
           <span className="font-medium text-aguara-ink">Mis mascotas</span>. Si todavía no tenés
-          chapita QR, activá una desde el inicio.
+          identificador QR, activá uno desde el inicio.
         </p>
       ) : null}
 
@@ -182,24 +183,31 @@ export default function AgendaSection({ tutor, prefill = null, onPrefillConsumed
               return (
                 <li key={cita.id} className="py-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-aguara-ink">
-                        {cita.clinica_pacientes?.nombre || "Mascota"} ·{" "}
-                        {cita.inicio ? formatDateTime(cita.inicio) : "A coordinar"}
-                      </p>
-                      <p className="text-sm text-stone-500">
-                        {cita.clinicas?.nombre || "Clínica"}
-                        {cita.clinicas?.ciudad ? ` · ${cita.clinicas.ciudad}` : ""}
-                        {cita.clinica_veterinarios?.nombre
-                          ? ` · ${cita.clinica_veterinarios.nombre}`
-                          : ""}
-                        {cita.motivo ? ` · ${cita.motivo}` : ""}
-                      </p>
-                      {cita.estado === "pendiente" ? (
-                        <p className="mt-1 text-xs text-amber-700">
-                          A confirmar por la clínica
+                    <div className="flex min-w-0 items-start gap-3">
+                      <ClinicaLogoMark
+                        logoUrl={cita.clinicas?.logo_url}
+                        nombre={cita.clinicas?.nombre}
+                        size={36}
+                      />
+                      <div className="min-w-0">
+                        <p className="font-medium text-aguara-ink">
+                          {cita.clinica_pacientes?.nombre || "Mascota"} ·{" "}
+                          {cita.inicio ? formatDateTime(cita.inicio) : "A coordinar"}
                         </p>
-                      ) : null}
+                        <p className="text-sm text-stone-500">
+                          {cita.clinicas?.nombre || "Clínica"}
+                          {cita.clinicas?.ciudad ? ` · ${cita.clinicas.ciudad}` : ""}
+                          {cita.clinica_veterinarios?.nombre
+                            ? ` · ${cita.clinica_veterinarios.nombre}`
+                            : ""}
+                          {cita.motivo ? ` · ${cita.motivo}` : ""}
+                        </p>
+                        {cita.estado === "pendiente" ? (
+                          <p className="mt-1 text-xs text-amber-700">
+                            A confirmar por la clínica
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
                     <EstadoBadge estado={cita.estado} label={etiquetaEstado(cita.estado)} />
                   </div>
@@ -261,18 +269,25 @@ export default function AgendaSection({ tutor, prefill = null, onPrefillConsumed
                     key={cita.id}
                     className="flex flex-wrap items-center justify-between gap-3 py-3"
                   >
-                    <div>
-                      <p className="font-medium text-aguara-ink">
-                        {cita.clinica_pacientes?.nombre || "Mascota"} ·{" "}
-                        {cita.inicio ? formatDateTime(cita.inicio) : "—"}
-                      </p>
-                      <p className="text-sm text-stone-500">
-                        {cita.clinicas?.nombre || "Clínica"}
-                        {cita.clinica_veterinarios?.nombre
-                          ? ` · ${cita.clinica_veterinarios.nombre}`
-                          : ""}
-                        {cita.motivo ? ` · ${cita.motivo}` : ""}
-                      </p>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <ClinicaLogoMark
+                        logoUrl={cita.clinicas?.logo_url}
+                        nombre={cita.clinicas?.nombre}
+                        size={36}
+                      />
+                      <div className="min-w-0">
+                        <p className="font-medium text-aguara-ink">
+                          {cita.clinica_pacientes?.nombre || "Mascota"} ·{" "}
+                          {cita.inicio ? formatDateTime(cita.inicio) : "—"}
+                        </p>
+                        <p className="text-sm text-stone-500">
+                          {cita.clinicas?.nombre || "Clínica"}
+                          {cita.clinica_veterinarios?.nombre
+                            ? ` · ${cita.clinica_veterinarios.nombre}`
+                            : ""}
+                          {cita.motivo ? ` · ${cita.motivo}` : ""}
+                        </p>
+                      </div>
                     </div>
                     <EstadoBadge estado={badgeEstado} label={label} />
                   </li>
@@ -587,7 +602,7 @@ function CitaForm({ tutor, mascotas, clinicas, initial, preferMascotaId, onCance
         Podés elegir un veterinario o “Según disponibilidad”. La clínica deberá confirmar el turno.
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Clínica" id="t-cita-cli">
+        <Field label="Clínica" id="t-cita-cli" className="sm:col-span-2">
           <select
             id="t-cita-cli"
             required
@@ -607,10 +622,35 @@ function CitaForm({ tutor, mascotas, clinicas, initial, preferMascotaId, onCance
             {clinicas.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.nombre}
-                {c.ciudad ? ` · ${c.ciudad}` : ""}
+                {c.direccion ? ` · ${c.direccion}` : c.ciudad ? ` · ${c.ciudad}` : ""}
               </option>
             ))}
           </select>
+          {clinicaSeleccionada ? (
+            <div className="mt-2 flex items-start gap-3 rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-2 text-sm text-stone-700">
+              <ClinicaLogoMark
+                logoUrl={clinicaSeleccionada.logo_url}
+                nombre={clinicaSeleccionada.nombre}
+                size={44}
+              />
+              <div className="min-w-0">
+                <p className="font-medium text-aguara-ink">{clinicaSeleccionada.nombre}</p>
+                {clinicaSeleccionada.direccion ? (
+                  <p className="mt-0.5 text-stone-600">{clinicaSeleccionada.direccion}</p>
+                ) : null}
+                {clinicaSeleccionada.ciudad ? (
+                  <p className="text-stone-500">
+                    {clinicaSeleccionada.ciudad}
+                    {clinicaSeleccionada.telefono
+                      ? ` · Tel. ${clinicaSeleccionada.telefono}`
+                      : ""}
+                  </p>
+                ) : clinicaSeleccionada.telefono ? (
+                  <p className="text-stone-500">Tel. {clinicaSeleccionada.telefono}</p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </Field>
         <Field label="Veterinario" id="t-cita-vet">
           <select

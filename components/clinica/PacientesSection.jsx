@@ -17,36 +17,36 @@ import MascotaRegistroFields, {
   emptyPetFormConCabecera,
   validateMascotaRegistroForm,
 } from "@/components/mascotas/MascotaRegistroFields";
+import VacunasCatalogoList from "@/components/mascotas/VacunasCatalogoList";
 import {
-  actualizarArchivo,
-  actualizarDesparasitacion,
   actualizarVacuna,
   consultaPendienteCompletar,
-  crearArchivo,
+  crearArchivosDesdeFiles,
   crearCliente,
   crearDesparasitacion,
   crearPaciente,
+  crearRecordatorio,
   crearVacuna,
-  eliminarArchivo,
-  eliminarDesparasitacion,
-  eliminarVacuna,
   listarArchivosPacienteCompletas,
   listarClientes,
   listarConsultas,
   listarDesparasitacionesPacienteCompletas,
   listarPacientes,
+  listarRecordatoriosPaciente,
+  listarTratamientosPaciente,
   listarVacunasPacienteCompletas,
   listarVeterinarios,
   obtenerPaciente,
 } from "@/lib/chapitas/clinicaOps";
 import { listarServiciosActivos } from "@/lib/chapitas/clinicas";
 import { readClinicSession } from "@/lib/chapitas/clinicSession";
+import { crearTratamiento } from "@/lib/chapitas/mascotaPerfil";
 import { supabase } from "@/lib/chapitas/supabaseClient";
-import { esVacunaVencida } from "@/lib/chapitas/vacunas";
 import { confirmGuardar } from "@/lib/confirmAction";
 
 const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
 const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const FICHA_NUEVO = "__nuevo__";
 
 export default function PacientesSection({ clinicaId }) {
   const [q, setQ] = useState("");
@@ -412,7 +412,7 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
         clinicas={clinicasCabecera}
       />
 
-      <Field label="Código chapita (opcional)" id="np-chapita">
+      <Field label="Código identificador (opcional)" id="np-chapita">
         <input
           id="np-chapita"
           className={fieldClass}
@@ -436,6 +436,8 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
   const [vacunas, setVacunas] = useState([]);
   const [desparas, setDesparas] = useState([]);
   const [archivos, setArchivos] = useState([]);
+  const [recordatorios, setRecordatorios] = useState([]);
+  const [tratamientos, setTratamientos] = useState([]);
   const [vets, setVets] = useState([]);
   const [servicios, setServicios] = useState([]);
   const [clientes, setClientes] = useState([]);
@@ -445,14 +447,49 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
   const [showHcForm, setShowHcForm] = useState(false);
   const [selectedConsultaId, setSelectedConsultaId] = useState(null);
   const [citaMsg, setCitaMsg] = useState("");
+  const [busyFicha, setBusyFicha] = useState(false);
+  const [fichaMsg, setFichaMsg] = useState("");
+  const [fichaErr, setFichaErr] = useState("");
+  const [despSel, setDespSel] = useState(FICHA_NUEVO);
+  const [archivoSel, setArchivoSel] = useState(FICHA_NUEVO);
+  const [recordatorioSel, setRecordatorioSel] = useState(FICHA_NUEVO);
+  const [tratamientoSel, setTratamientoSel] = useState(FICHA_NUEVO);
+  const [despForm, setDespForm] = useState({ producto: "", fecha: "", proxima_fecha: "" });
+  const [archivoForm, setArchivoForm] = useState({ tipo: "estudio", files: [] });
+  const archivoInputRef = useRef(null);
+  const [recordatorioForm, setRecordatorioForm] = useState({
+    tipo: "medicacion",
+    titulo: "",
+    detalle: "",
+    fecha_proxima: "",
+  });
+  const [tratamientoForm, setTratamientoForm] = useState({
+    titulo: "",
+    detalle: "",
+    fecha_inicio: "",
+    fecha_fin: "",
+    de_por_vida: false,
+  });
+
+  function syncSeleccion(items, setCurrent) {
+    setCurrent((prev) => {
+      if (!items.length) return FICHA_NUEVO;
+      if (prev !== FICHA_NUEVO && items.some((item) => String(item.id) === String(prev))) {
+        return String(prev);
+      }
+      return String(items[0].id);
+    });
+  }
 
   async function reloadFicha() {
     const p = await obtenerPaciente(pacienteId);
-    const [c, v, d, a, vetsRows, serviciosRows, clientesRows] = await Promise.all([
+    const [c, v, d, a, rec, trat, vetsRows, serviciosRows, clientesRows] = await Promise.all([
       listarConsultas(clinicaId, { pacienteId }),
       listarVacunasPacienteCompletas(p, { clinicaId }),
       listarDesparasitacionesPacienteCompletas(p, { clinicaId }),
       listarArchivosPacienteCompletas(p, { clinicaId }),
+      listarRecordatoriosPaciente(pacienteId),
+      listarTratamientosPaciente(pacienteId),
       listarVeterinarios(clinicaId),
       listarServiciosActivos(clinicaId),
       listarClientes(clinicaId),
@@ -462,9 +499,15 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
     setVacunas(v);
     setDesparas(d);
     setArchivos(a);
+    setRecordatorios(rec);
+    setTratamientos(trat);
     setVets((vetsRows || []).filter((vet) => vet.activo !== false));
     setServicios(serviciosRows || []);
     setClientes(clientesRows || []);
+    syncSeleccion(d, setDespSel);
+    syncSeleccion(a, setArchivoSel);
+    syncSeleccion(rec, setRecordatorioSel);
+    syncSeleccion(trat, setTratamientoSel);
   }
 
   useEffect(() => {
@@ -570,6 +613,7 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
           vets={vets}
           servicios={servicios}
           lockPaciente
+          omitirPendiente
           initial={{
             paciente_id: paciente.id,
             cliente_id: paciente.cliente_id || paciente.clinica_clientes?.id || "",
@@ -613,7 +657,7 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
       <div className={cardClass}>
         <h3 className="font-semibold text-aguara-ink">Historial completo</h3>
         <p className="mt-1 text-xs text-stone-500">
-          Incluye historias de otras clínicas con la misma chapita (solo lectura).
+          Incluye historias de otras clínicas con el mismo identificador (solo lectura).
         </p>
         {consultas.length === 0 ? (
           <p className="mt-3 text-sm text-stone-500">Sin consultas registradas.</p>
@@ -666,52 +710,163 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
         )}
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <div className={cardClass}>
-          <h3 className="font-semibold text-aguara-ink">Vacunas</h3>
-          {vacunas.length === 0 ? (
-            <p className="mt-3 text-sm text-stone-500">Sin vacunas.</p>
-          ) : (
-            <ul className="mt-3 space-y-2 text-sm">
-              {vacunas.map((v) => (
-                <li key={v.id}>
-                  <strong>{v.nombre}</strong> · {formatDate(v.fecha)}
-                  {esVacunaVencida(v) ? (
-                    <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-800">
-                      Vencida
-                    </span>
-                  ) : null}
-                  {v.proxima_fecha ? ` · próxima ${formatDate(v.proxima_fecha)}` : ""}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <div className={cardClass}>
-          <h3 className="font-semibold text-aguara-ink">Desparasitaciones</h3>
-          {desparas.length === 0 ? (
-            <p className="mt-3 text-sm text-stone-500">Sin registros.</p>
-          ) : (
-            <ul className="mt-3 space-y-2 text-sm">
-              {desparas.map((d) => (
-                <li key={d.id}>
-                  <strong>{d.producto}</strong> · {formatDate(d.fecha)}
-                  {d.proxima_fecha ? ` · próxima ${formatDate(d.proxima_fecha)}` : ""}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+      <div>
+        <h3 className="text-base font-semibold text-aguara-ink">Cargar en la ficha</h3>
+        <p className="mt-1 text-sm text-stone-500">
+          Revisá colocaciones previas o agregá una nueva.
+        </p>
+        {fichaMsg ? <p className="mt-2 text-sm text-emerald-700">{fichaMsg}</p> : null}
+        {fichaErr ? <p className="mt-2 text-sm text-red-700">{fichaErr}</p> : null}
       </div>
 
-      <div className={cardClass}>
-        <h3 className="font-semibold text-aguara-ink">Archivos</h3>
-        {archivos.length === 0 ? (
-          <p className="mt-3 text-sm text-stone-500">Sin archivos.</p>
-        ) : (
-          <ul className="mt-3 space-y-2 text-sm">
-            {archivos.map((a) => (
-              <li key={a.id}>
+      <div className={`${cardClass} space-y-3`}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-semibold text-aguara-ink">Vacunas</h3>
+          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
+            Catálogo completo · vencimiento a 1 año
+          </span>
+        </div>
+        <VacunasCatalogoList
+          especie={paciente.especie}
+          vacunas={vacunas}
+          formatDate={formatDate}
+          fieldClass={fieldClass}
+          primaryBtnClass={primaryBtnClass}
+          secondaryBtnClass={secondaryBtnClass}
+          busy={busyFicha}
+          canUpdateVacuna={(v) => v.origen !== "tutor"}
+          onRegistrar={async ({ nombre, fecha, proxima_fecha }) => {
+            setBusyFicha(true);
+            setFichaMsg("");
+            setFichaErr("");
+            try {
+              await crearVacuna(clinicaId, {
+                paciente_id: paciente.id,
+                nombre,
+                fecha,
+                proxima_fecha,
+              });
+              setFichaMsg("Vacuna registrada.");
+              await reloadFicha();
+            } finally {
+              setBusyFicha(false);
+            }
+          }}
+          onActualizarFecha={async (vacuna, { fecha, proxima_fecha }) => {
+            if (vacuna.origen === "tutor") {
+              throw new Error("Las vacunas del tutor se actualizan desde el portal del tutor.");
+            }
+            setBusyFicha(true);
+            setFichaMsg("");
+            setFichaErr("");
+            try {
+              await actualizarVacuna(vacuna.id, {
+                nombre: vacuna.nombre,
+                fecha,
+                proxima_fecha,
+                lote: vacuna.lote || null,
+                notas: vacuna.notas || null,
+                veterinario_id: vacuna.veterinario_id || null,
+              });
+              setFichaMsg("Fecha de vacuna actualizada.");
+              await reloadFicha();
+            } finally {
+              setBusyFicha(false);
+            }
+          }}
+        />
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
+        <FichaColocacionCard
+          title="Desparasitación"
+          items={desparas}
+          selected={despSel}
+          onSelect={setDespSel}
+          emptyLabel="Sin desparasitaciones previas."
+          optionLabel={(d) => `${d.producto} · ${formatDate(d.fecha)}`}
+          renderDetalle={(d) => (
+            <div className="space-y-1 text-sm text-stone-700">
+              <p>
+                <strong>{d.producto}</strong>
+              </p>
+              <p>Aplicada: {formatDate(d.fecha) || "—"}</p>
+              <p>Caducidad: {formatDate(d.proxima_fecha) || "—"}</p>
+            </div>
+          )}
+          form={
+            <form
+              className="space-y-2"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!(await confirmGuardar(`la desparasitación “${despForm.producto.trim()}”`))) {
+                  return;
+                }
+                setBusyFicha(true);
+                setFichaMsg("");
+                setFichaErr("");
+                try {
+                  await crearDesparasitacion(clinicaId, {
+                    paciente_id: paciente.id,
+                    ...despForm,
+                  });
+                  setDespForm({ producto: "", fecha: "", proxima_fecha: "" });
+                  setFichaMsg("Desparasitación agregada.");
+                  await reloadFicha();
+                } catch (err) {
+                  setFichaErr(
+                    err instanceof Error ? err.message : "No se pudo agregar la desparasitación.",
+                  );
+                } finally {
+                  setBusyFicha(false);
+                }
+              }}
+            >
+              <input
+                required
+                placeholder="Producto"
+                className={fieldClass}
+                value={despForm.producto}
+                onChange={(e) => setDespForm((v) => ({ ...v, producto: e.target.value }))}
+              />
+              <label className="block text-xs text-stone-500">
+                Fecha de aplicación
+                <input
+                  type="date"
+                  className={`${fieldClass} mt-1`}
+                  value={despForm.fecha}
+                  onChange={(e) => setDespForm((v) => ({ ...v, fecha: e.target.value }))}
+                />
+              </label>
+              <label className="block text-xs text-stone-500">
+                Fecha de caducidad
+                <input
+                  type="date"
+                  className={`${fieldClass} mt-1`}
+                  value={despForm.proxima_fecha}
+                  onChange={(e) => setDespForm((v) => ({ ...v, proxima_fecha: e.target.value }))}
+                />
+              </label>
+              <p className="text-xs text-stone-400">
+                Si cargás caducidad, aparece en los recordatorios del tutor.
+              </p>
+              <button type="submit" className={primaryBtnClass} disabled={busyFicha}>
+                Agregar
+              </button>
+            </form>
+          }
+        />
+
+        <FichaColocacionCard
+          title="Archivo"
+          items={archivos}
+          selected={archivoSel}
+          onSelect={setArchivoSel}
+          emptyLabel="Sin archivos previos."
+          optionLabel={(a) => `${a.nombre} · ${a.tipo}`}
+          renderDetalle={(a) => (
+            <div className="space-y-1 text-sm text-stone-700">
+              <p>
                 <a
                   href={a.url}
                   target="_blank"
@@ -720,14 +875,391 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
                 >
                   {a.nombre}
                 </a>{" "}
-                <span className="text-stone-500">
-                  ({a.tipo}) · {formatDateTime(a.creado_en)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+                <span className="text-stone-500">({a.tipo})</span>
+              </p>
+              <p className="text-xs text-stone-500">{formatDateTime(a.creado_en)}</p>
+            </div>
+          )}
+          form={
+            <form
+              className="space-y-2"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const files = archivoForm.files || [];
+                if (!files.length) {
+                  setFichaErr("Seleccioná al menos un archivo del ordenador.");
+                  return;
+                }
+                const label =
+                  files.length === 1
+                    ? `el archivo “${files[0].name}”`
+                    : `los ${files.length} archivos seleccionados`;
+                if (!(await confirmGuardar(label))) return;
+                setBusyFicha(true);
+                setFichaMsg("");
+                setFichaErr("");
+                try {
+                  await crearArchivosDesdeFiles(clinicaId, {
+                    paciente_id: paciente.id,
+                    consulta_id: null,
+                    tipo: archivoForm.tipo,
+                    files,
+                  });
+                  setArchivoForm({ tipo: "estudio", files: [] });
+                  if (archivoInputRef.current) archivoInputRef.current.value = "";
+                  setFichaMsg(
+                    files.length === 1
+                      ? "Archivo adjuntado."
+                      : `${files.length} archivos adjuntados.`,
+                  );
+                  await reloadFicha();
+                } catch (err) {
+                  setFichaErr(
+                    err instanceof Error ? err.message : "No se pudo adjuntar el archivo.",
+                  );
+                } finally {
+                  setBusyFicha(false);
+                }
+              }}
+            >
+              <select
+                className={fieldClass}
+                value={archivoForm.tipo}
+                onChange={(e) => setArchivoForm((v) => ({ ...v, tipo: e.target.value }))}
+              >
+                <option value="estudio">Estudio</option>
+                <option value="foto">Foto</option>
+                <option value="lab">Laboratorio</option>
+                <option value="otro">Otro</option>
+              </select>
+              <label className="block text-xs text-stone-500">
+                Archivos del ordenador
+                <input
+                  ref={archivoInputRef}
+                  required
+                  type="file"
+                  multiple
+                  className={`${fieldClass} mt-1`}
+                  onChange={(e) =>
+                    setArchivoForm((v) => ({
+                      ...v,
+                      files: Array.from(e.target.files || []),
+                    }))
+                  }
+                />
+              </label>
+              {archivoForm.files?.length ? (
+                <ul className="space-y-1 text-xs text-stone-600">
+                  {archivoForm.files.map((f) => (
+                    <li key={`${f.name}-${f.size}-${f.lastModified}`}>
+                      {f.name} · {(f.size / 1024).toFixed(0)} KB
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <button type="submit" className={primaryBtnClass} disabled={busyFicha}>
+                {archivoForm.files?.length > 1 ? "Adjuntar archivos" : "Adjuntar"}
+              </button>
+              <p className="text-xs text-stone-400">
+                Podés elegir varios (PDF, imágenes, Word, etc.). Máx. 20 MB c/u.
+              </p>
+            </form>
+          }
+        />
+
+        <FichaColocacionCard
+          title="Recordatorio tutor"
+          items={recordatorios}
+          selected={recordatorioSel}
+          onSelect={setRecordatorioSel}
+          emptyLabel="Sin recordatorios previos."
+          optionLabel={(r) =>
+            `${r.titulo}${r.fecha_proxima ? ` · ${formatDate(r.fecha_proxima)}` : ""}`
+          }
+          renderDetalle={(r) => (
+            <div className="space-y-1 text-sm text-stone-700">
+              <p>
+                <strong>{r.titulo}</strong>{" "}
+                <span className="text-stone-500">({r.tipo})</span>
+                {r.activo === false ? (
+                  <span className="ml-2 text-xs text-stone-400">Inactivo</span>
+                ) : null}
+              </p>
+              {r.detalle ? <p>{r.detalle}</p> : null}
+              <p>Fecha: {formatDate(r.fecha_proxima) || "—"}</p>
+            </div>
+          )}
+          form={
+            <form
+              className="space-y-2"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!(await confirmGuardar(`el recordatorio “${recordatorioForm.titulo.trim()}”`))) {
+                  return;
+                }
+                setBusyFicha(true);
+                setFichaMsg("");
+                setFichaErr("");
+                try {
+                  await crearRecordatorio(clinicaId, {
+                    paciente_id: paciente.id,
+                    cliente_id: paciente.cliente_id || paciente.clinica_clientes?.id || null,
+                    ...recordatorioForm,
+                  });
+                  setRecordatorioForm({
+                    tipo: "medicacion",
+                    titulo: "",
+                    detalle: "",
+                    fecha_proxima: "",
+                  });
+                  setFichaMsg("Recordatorio cargado para el tutor.");
+                  await reloadFicha();
+                } catch (err) {
+                  setFichaErr(
+                    err instanceof Error ? err.message : "No se pudo cargar el recordatorio.",
+                  );
+                } finally {
+                  setBusyFicha(false);
+                }
+              }}
+            >
+              <select
+                className={fieldClass}
+                value={recordatorioForm.tipo}
+                onChange={(e) => setRecordatorioForm((v) => ({ ...v, tipo: e.target.value }))}
+              >
+                <option value="medicacion">Medicación</option>
+                <option value="control">Control</option>
+                <option value="vacuna">Vacuna</option>
+                <option value="otro">Otro</option>
+              </select>
+              <input
+                required
+                placeholder="Título"
+                className={fieldClass}
+                value={recordatorioForm.titulo}
+                onChange={(e) => setRecordatorioForm((v) => ({ ...v, titulo: e.target.value }))}
+              />
+              <input
+                placeholder="Detalle / dosis"
+                className={fieldClass}
+                value={recordatorioForm.detalle}
+                onChange={(e) => setRecordatorioForm((v) => ({ ...v, detalle: e.target.value }))}
+              />
+              <input
+                type="date"
+                className={fieldClass}
+                value={recordatorioForm.fecha_proxima}
+                onChange={(e) =>
+                  setRecordatorioForm((v) => ({ ...v, fecha_proxima: e.target.value }))
+                }
+              />
+              <button type="submit" className={primaryBtnClass} disabled={busyFicha}>
+                Cargar para el tutor
+              </button>
+            </form>
+          }
+        />
+
+        <FichaColocacionCard
+          title="Tratamiento activo"
+          items={tratamientos}
+          selected={tratamientoSel}
+          onSelect={setTratamientoSel}
+          emptyLabel="Sin tratamientos previos."
+          optionLabel={(t) =>
+            `${t.titulo}${t.de_por_vida ? " · de por vida" : t.fecha_fin ? ` · hasta ${formatDate(t.fecha_fin)}` : ""}`
+          }
+          renderDetalle={(t) => (
+            <div className="space-y-1 text-sm text-stone-700">
+              <p>
+                <strong>{t.titulo}</strong>
+                {t.activo === false ? (
+                  <span className="ml-2 text-xs text-stone-400">Inactivo</span>
+                ) : null}
+              </p>
+              {t.detalle ? <p>{t.detalle}</p> : null}
+              <p>Inicio: {formatDate(t.fecha_inicio) || "—"}</p>
+              <p>
+                {t.de_por_vida
+                  ? "De por vida"
+                  : `Fin: ${formatDate(t.fecha_fin) || "—"}`}
+              </p>
+            </div>
+          )}
+          form={
+            <form
+              className="space-y-2"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!(await confirmGuardar(`el tratamiento “${tratamientoForm.titulo.trim()}”`))) {
+                  return;
+                }
+                setBusyFicha(true);
+                setFichaMsg("");
+                setFichaErr("");
+                try {
+                  await crearTratamiento(clinicaId, {
+                    paciente_id: paciente.id,
+                    ...tratamientoForm,
+                  });
+                  setTratamientoForm({
+                    titulo: "",
+                    detalle: "",
+                    fecha_inicio: "",
+                    fecha_fin: "",
+                    de_por_vida: false,
+                  });
+                  setFichaMsg("Tratamiento guardado.");
+                  await reloadFicha();
+                } catch (err) {
+                  setFichaErr(
+                    err instanceof Error ? err.message : "No se pudo guardar el tratamiento.",
+                  );
+                } finally {
+                  setBusyFicha(false);
+                }
+              }}
+            >
+              <input
+                required
+                placeholder="Nombre del tratamiento"
+                className={fieldClass}
+                value={tratamientoForm.titulo}
+                onChange={(e) => setTratamientoForm((v) => ({ ...v, titulo: e.target.value }))}
+              />
+              <input
+                placeholder="Detalle / indicaciones"
+                className={fieldClass}
+                value={tratamientoForm.detalle}
+                onChange={(e) => setTratamientoForm((v) => ({ ...v, detalle: e.target.value }))}
+              />
+              <input
+                type="date"
+                className={fieldClass}
+                value={tratamientoForm.fecha_inicio}
+                onChange={(e) =>
+                  setTratamientoForm((v) => ({ ...v, fecha_inicio: e.target.value }))
+                }
+                title="Inicio"
+              />
+              <label className="flex items-center gap-2 text-sm text-stone-700">
+                <input
+                  type="checkbox"
+                  checked={tratamientoForm.de_por_vida}
+                  onChange={(e) =>
+                    setTratamientoForm((v) => ({
+                      ...v,
+                      de_por_vida: e.target.checked,
+                      fecha_fin: e.target.checked ? "" : v.fecha_fin,
+                    }))
+                  }
+                />
+                De por vida
+              </label>
+              {!tratamientoForm.de_por_vida ? (
+                <input
+                  type="date"
+                  className={fieldClass}
+                  value={tratamientoForm.fecha_fin}
+                  onChange={(e) =>
+                    setTratamientoForm((v) => ({ ...v, fecha_fin: e.target.value }))
+                  }
+                  title="Fecha de finalización"
+                />
+              ) : null}
+              <button type="submit" className={primaryBtnClass} disabled={busyFicha}>
+                Guardar tratamiento
+              </button>
+            </form>
+          }
+        />
       </div>
+    </div>
+  );
+}
+
+function FichaColocacionCard({
+  title,
+  items,
+  selected,
+  onSelect,
+  optionLabel,
+  renderDetalle,
+  form,
+  emptyLabel,
+}) {
+  const selectedItem =
+    selected !== FICHA_NUEVO
+      ? items.find((item) => String(item.id) === String(selected)) || null
+      : null;
+  const mostrandoNuevo = selected === FICHA_NUEVO || items.length === 0;
+
+  return (
+    <div className={`${cardClass} space-y-3`}>
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="font-semibold text-aguara-ink">{title}</h3>
+        {items.length > 0 ? (
+          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
+            {items.length} previa{items.length === 1 ? "" : "s"}
+          </span>
+        ) : null}
+      </div>
+
+      {items.length === 0 ? (
+        <p className="text-sm text-stone-500">{emptyLabel}</p>
+      ) : items.length === 1 ? (
+        <div className="space-y-2">
+          {!mostrandoNuevo ? (
+            <div className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2">
+              {renderDetalle(items[0])}
+            </div>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {mostrandoNuevo ? (
+              <button
+                type="button"
+                className={secondaryBtnClass}
+                onClick={() => onSelect(String(items[0].id))}
+              >
+                Ver previa
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={secondaryBtnClass}
+                onClick={() => onSelect(FICHA_NUEVO)}
+              >
+                Agregar nueva
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <label className="block text-xs text-stone-500">
+          Colocaciones previas
+          <select
+            className={`${fieldClass} mt-1`}
+            value={selected}
+            onChange={(e) => onSelect(e.target.value)}
+          >
+            {items.map((item) => (
+              <option key={item.id} value={String(item.id)}>
+                {optionLabel(item)}
+              </option>
+            ))}
+            <option value={FICHA_NUEVO}>＋ Agregar nueva…</option>
+          </select>
+        </label>
+      )}
+
+      {items.length > 1 && selectedItem ? (
+        <div className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2">
+          {renderDetalle(selectedItem)}
+        </div>
+      ) : null}
+
+      {mostrandoNuevo ? form : null}
     </div>
   );
 }

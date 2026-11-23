@@ -21,7 +21,11 @@ export default function DashboardSection({ clinicaId, onNavigate }) {
   const [espera, setEspera] = useState([]);
   const [pendientes, setPendientes] = useState([]);
   const [ingresos, setIngresos] = useState(0);
-  const [alertas, setAlertas] = useState({ vacunas: [], desparasitaciones: [] });
+  const [alertas, setAlertas] = useState({
+    vacunas: [],
+    desparasitaciones: [],
+    recordatorios: [],
+  });
   const [stockBajo, setStockBajo] = useState([]);
   const [slotsHoy, setSlotsHoy] = useState(0);
 
@@ -181,22 +185,45 @@ export default function DashboardSection({ clinicaId, onNavigate }) {
 
         <div className={cardClass}>
           <h2 className="text-lg font-semibold text-aguara-ink">Alertas</h2>
+          <p className="mt-1 text-sm text-stone-500">Vencimientos de los próximos 5 días</p>
           <div className="mt-4 space-y-3">
             {alertas.vacunas.length === 0 &&
             alertas.desparasitaciones.length === 0 &&
+            (alertas.recordatorios?.length || 0) === 0 &&
             stockBajo.length === 0 ? (
-              <p className="text-sm text-stone-500">Sin alertas próximas.</p>
+              <p className="text-sm text-stone-500">Sin vencimientos en los próximos 5 días.</p>
             ) : null}
             {alertas.vacunas.map((v) => (
-              <p key={v.id} className="text-sm text-stone-700">
-                Vacuna <strong>{v.nombre}</strong> de {v.clinica_pacientes?.nombre} · próximo{" "}
-                {formatDate(v.proxima_fecha)}
+              <p key={`vac-${v.id}`} className="text-sm text-stone-700">
+                Vacuna <strong>{v.nombre}</strong> · {v.clinica_pacientes?.nombre || "Paciente"}
+                {v.clinica_pacientes?.clinica_clientes?.nombre_completo
+                  ? ` (${v.clinica_pacientes.clinica_clientes.nombre_completo})`
+                  : ""}{" "}
+                · vence {formatDate(v.proxima_fecha)}
               </p>
             ))}
             {alertas.desparasitaciones.map((d) => (
-              <p key={d.id} className="text-sm text-stone-700">
-                Desparasitación <strong>{d.producto}</strong> de {d.clinica_pacientes?.nombre} ·
-                próximo {formatDate(d.proxima_fecha)}
+              <p key={`desp-${d.id}`} className="text-sm text-stone-700">
+                Desparasitación <strong>{d.producto}</strong> ·{" "}
+                {d.clinica_pacientes?.nombre || "Paciente"}
+                {d.clinica_pacientes?.clinica_clientes?.nombre_completo
+                  ? ` (${d.clinica_pacientes.clinica_clientes.nombre_completo})`
+                  : ""}{" "}
+                · vence {formatDate(d.proxima_fecha)}
+              </p>
+            ))}
+            {(alertas.recordatorios || []).map((r) => (
+              <p key={`rec-${r.id}`} className="text-sm text-stone-700">
+                Recordatorio <strong>{r.titulo}</strong> ·{" "}
+                {r.clinica_pacientes?.nombre || "Paciente"}
+                {r.clinica_clientes?.nombre_completo ||
+                r.clinica_pacientes?.clinica_clientes?.nombre_completo
+                  ? ` (${
+                      r.clinica_clientes?.nombre_completo ||
+                      r.clinica_pacientes?.clinica_clientes?.nombre_completo
+                    })`
+                  : ""}{" "}
+                · vence {formatDate(r.fecha_proxima)}
               </p>
             ))}
             {stockBajo.map((p) => (

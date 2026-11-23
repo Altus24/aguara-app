@@ -37,6 +37,21 @@ export const ESTADO_COLORS = {
   lista_espera: "bg-amber-50 text-amber-900",
 };
 
+export function ClinicaLogoMark({ logoUrl, nombre, size = 40, className = "" }) {
+  if (!logoUrl) return null;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={logoUrl}
+      alt={nombre ? `Logo de ${nombre}` : "Logo de la clínica"}
+      width={size}
+      height={size}
+      className={`shrink-0 rounded-lg border border-stone-200 bg-white object-contain ${className}`}
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
 export function EstadoBadge({ estado, label }) {
   return (
     <span
