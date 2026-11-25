@@ -7,11 +7,11 @@ import { LogoLink } from "@/components/logo";
 import { primaryButtonClass } from "@/components/ui/form";
 
 const NAV_LINKS = [
-  { href: "#como-funciona", label: "Cómo funciona", external: false },
   { href: "#beneficios", label: "Beneficios", external: false },
+  { href: "#como-funciona", label: "¿Cómo funciona?", external: false },
+  { href: "#comprar", label: "Comprar", external: false },
   { href: "#registrar", label: "Registrar mascota", external: false },
   { href: "/tutor/login", label: "Ingreso tutores", external: true },
-  { href: "/tutor/registro", label: "Registrar tutor", external: true },
   { href: "/clinica/login", label: "Ingreso clínicas", external: true },
 ] as const;
 
@@ -60,10 +60,10 @@ export function LandingHeader() {
 
         <div className="flex items-center gap-2">
           <Link
-            href="/mascota/T1-001"
+            href="/comprar"
             className={`${primaryButtonClass} h-9 px-3 text-sm sm:px-4`}
           >
-            Conseguir Aguará
+            Comprar identificador QR
           </Link>
           <button
             type="button"

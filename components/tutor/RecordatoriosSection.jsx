@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import MedicacionExtrasFields, {
+  formatHorariosLabel,
+  normalizeHorarios,
+} from "@/components/mascotas/MedicacionExtrasFields";
 import {
   Field,
   cardClass,
@@ -109,9 +113,12 @@ export default function RecordatoriosSection({ tutor }) {
   const controles = (data.recordatorios || []).filter(
     (r) => r.tipo === "control" && enVentanaRecordatorio(r.fecha_proxima),
   );
-  const medicacion = (data.recordatorios || []).filter(
-    (r) => r.tipo === "medicacion" && enVentanaRecordatorio(r.fecha_proxima),
-  );
+  const medicacion = (data.recordatorios || []).filter((r) => {
+    if (r.tipo !== "medicacion") return false;
+    if (r.de_por_vida) return true;
+    if (!r.fecha_proxima) return true;
+    return enVentanaRecordatorio(r.fecha_proxima);
+  });
   const otros = (data.recordatorios || []).filter(
     (r) =>
       r.tipo !== "control" &&
@@ -312,6 +319,8 @@ function MedicacionCard({ tutor, mascotas, items, onChanged, onError }) {
     titulo: "",
     detalle: "",
     fecha_proxima: "",
+    de_por_vida: false,
+    horarios: [""],
   });
 
   const pets = useMemo(
@@ -349,12 +358,16 @@ function MedicacionCard({ tutor, mascotas, items, onChanged, onError }) {
         titulo: form.titulo,
         detalle: form.detalle,
         fecha_proxima: form.fecha_proxima || null,
+        de_por_vida: form.de_por_vida,
+        horarios: normalizeHorarios(form.horarios),
       });
       setForm({
         mascota_key: pets.length === 1 ? pets[0].chapita_id || pets[0].paciente_clinico_id : "",
         titulo: "",
         detalle: "",
         fecha_proxima: "",
+        de_por_vida: false,
+        horarios: [""],
       });
       setMessage("Medicación agregada.");
       setShowAdd(false);
@@ -389,13 +402,18 @@ function MedicacionCard({ tutor, mascotas, items, onChanged, onError }) {
                 <p className="text-xs text-stone-500">
                   {r.origen === "tutor" ? "cargado por vos" : "cargado por la clínica"}
                 </p>
-                {r.fecha_proxima ? (
+                {r.de_por_vida ? (
+                  <p className="font-medium text-aguara-orange">De por vida</p>
+                ) : r.fecha_proxima ? (
                   <>
                     <p className="font-medium text-aguara-orange">
                       {etiquetaDiasVencimiento(diasHastaFecha(r.fecha_proxima))}
                     </p>
                     <p className="text-stone-600">Fecha: {formatDate(r.fecha_proxima)}</p>
                   </>
+                ) : null}
+                {formatHorariosLabel(r.horarios) ? (
+                  <p className="text-stone-600">Horarios: {formatHorariosLabel(r.horarios)}</p>
                 ) : null}
                 {r.detalle ? <p className="text-stone-500">{r.detalle}</p> : null}
               </div>
@@ -485,18 +503,27 @@ function MedicacionCard({ tutor, mascotas, items, onChanged, onError }) {
                   className={fieldClass}
                   value={form.detalle}
                   onChange={(e) => setForm((f) => ({ ...f, detalle: e.target.value }))}
-                  placeholder="Dosis, frecuencia… (opcional)"
+                  placeholder="Dosis… (opcional)"
                 />
               </Field>
-              <Field label="Próxima fecha / hasta" id="rec-med-fecha">
-                <input
-                  id="rec-med-fecha"
-                  type="date"
-                  className={fieldClass}
-                  value={form.fecha_proxima}
-                  onChange={(e) => setForm((f) => ({ ...f, fecha_proxima: e.target.value }))}
-                />
-              </Field>
+              <MedicacionExtrasFields
+                fieldClass={fieldClass}
+                horarios={form.horarios}
+                onHorariosChange={(horarios) => setForm((f) => ({ ...f, horarios }))}
+                dePorVida={form.de_por_vida}
+                onDePorVidaChange={(de_por_vida) =>
+                  setForm((f) => ({
+                    ...f,
+                    de_por_vida,
+                    fecha_proxima: de_por_vida ? "" : f.fecha_proxima,
+                  }))
+                }
+                fechaFin={form.fecha_proxima}
+                onFechaFinChange={(fecha_proxima) =>
+                  setForm((f) => ({ ...f, fecha_proxima }))
+                }
+                fechaFinLabel="Hasta / próxima fecha"
+              />
               <button type="submit" disabled={saving} className={primaryBtnClass}>
                 {saving ? "…" : "Agregar medicación"}
               </button>

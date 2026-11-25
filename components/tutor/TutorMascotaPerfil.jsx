@@ -33,6 +33,10 @@ import {
   SEXOS_MASCOTA,
   TEMPERAMENTOS_MASCOTA,
 } from "@/components/mascotas/MascotaRegistroFields";
+import MedicacionExtrasFields, {
+  formatHorariosLabel,
+  normalizeHorarios,
+} from "@/components/mascotas/MedicacionExtrasFields";
 import VacunasCatalogoList from "@/components/mascotas/VacunasCatalogoList";
 import {
   diasHastaFecha,
@@ -1222,6 +1226,7 @@ function TratamientosPerfilSection({ tutor, perfil, chapitaId, onChanged }) {
     fecha_inicio: new Date().toISOString().slice(0, 10),
     fecha_fin: "",
     de_por_vida: false,
+    horarios: [""],
   });
 
   async function handleSubmit(event) {
@@ -1240,6 +1245,7 @@ function TratamientosPerfilSection({ tutor, perfil, chapitaId, onChanged }) {
         fecha_inicio: form.fecha_inicio,
         fecha_fin: form.fecha_fin,
         de_por_vida: form.de_por_vida,
+        horarios: normalizeHorarios(form.horarios),
       });
       setForm({
         titulo: "",
@@ -1247,6 +1253,7 @@ function TratamientosPerfilSection({ tutor, perfil, chapitaId, onChanged }) {
         fecha_inicio: new Date().toISOString().slice(0, 10),
         fecha_fin: "",
         de_por_vida: false,
+        horarios: [""],
       });
       setMessage("Tratamiento agregado.");
       setShowAdd(false);
@@ -1289,6 +1296,11 @@ function TratamientosPerfilSection({ tutor, perfil, chapitaId, onChanged }) {
                       ? ` · Hasta ${formatDate(t.fecha_fin)}`
                       : ""}
                 </span>
+                {formatHorariosLabel(t.horarios) ? (
+                  <span className="mt-0.5 block text-stone-500">
+                    Horarios: {formatHorariosLabel(t.horarios)}
+                  </span>
+                ) : null}
               </div>
               {t.origen === "tutor" && tutor?.id ? (
                 <button
@@ -1330,14 +1342,14 @@ function TratamientosPerfilSection({ tutor, perfil, chapitaId, onChanged }) {
 
       {showAdd ? (
         <form onSubmit={handleSubmit} className="mt-3 grid gap-3 sm:grid-cols-2">
-          <Field label="Tratamiento" id="perf-tx-titulo" className="sm:col-span-2">
+          <Field label="Tratamiento / medicación" id="perf-tx-titulo" className="sm:col-span-2">
             <input
               id="perf-tx-titulo"
               required
               className={fieldClass}
               value={form.titulo}
               onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))}
-              placeholder="Nombre del tratamiento"
+              placeholder="Nombre del medicamento o tratamiento"
             />
           </Field>
           <Field label="Detalle / indicaciones" id="perf-tx-det" className="sm:col-span-2">
@@ -1349,7 +1361,7 @@ function TratamientosPerfilSection({ tutor, perfil, chapitaId, onChanged }) {
               placeholder="Opcional"
             />
           </Field>
-          <Field label="Inicio" id="perf-tx-ini">
+          <Field label="Inicio" id="perf-tx-ini" className="sm:col-span-2">
             <input
               id="perf-tx-ini"
               type="date"
@@ -1359,31 +1371,23 @@ function TratamientosPerfilSection({ tutor, perfil, chapitaId, onChanged }) {
               onChange={(e) => setForm((f) => ({ ...f, fecha_inicio: e.target.value }))}
             />
           </Field>
-          <div className="flex flex-col justify-end gap-2">
-            <label className="flex items-center gap-2 text-sm text-stone-700">
-              <input
-                type="checkbox"
-                checked={form.de_por_vida}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    de_por_vida: e.target.checked,
-                    fecha_fin: e.target.checked ? "" : f.fecha_fin,
-                  }))
-                }
-              />
-              De por vida
-            </label>
-            {!form.de_por_vida ? (
-              <input
-                type="date"
-                className={fieldClass}
-                value={form.fecha_fin}
-                onChange={(e) => setForm((f) => ({ ...f, fecha_fin: e.target.value }))}
-                title="Fecha de finalización"
-                placeholder="Fin"
-              />
-            ) : null}
+          <div className="sm:col-span-2">
+            <MedicacionExtrasFields
+              fieldClass={fieldClass}
+              horarios={form.horarios}
+              onHorariosChange={(horarios) => setForm((f) => ({ ...f, horarios }))}
+              dePorVida={form.de_por_vida}
+              onDePorVidaChange={(de_por_vida) =>
+                setForm((f) => ({
+                  ...f,
+                  de_por_vida,
+                  fecha_fin: de_por_vida ? "" : f.fecha_fin,
+                }))
+              }
+              fechaFin={form.fecha_fin}
+              onFechaFinChange={(fecha_fin) => setForm((f) => ({ ...f, fecha_fin }))}
+              fechaFinLabel="Fecha de finalización"
+            />
           </div>
           <div className="sm:col-span-2">
             <button type="submit" disabled={saving} className={primaryBtnClass}>

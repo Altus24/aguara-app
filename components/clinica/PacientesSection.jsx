@@ -17,6 +17,10 @@ import MascotaRegistroFields, {
   emptyPetFormConCabecera,
   validateMascotaRegistroForm,
 } from "@/components/mascotas/MascotaRegistroFields";
+import MedicacionExtrasFields, {
+  formatHorariosLabel,
+  normalizeHorarios,
+} from "@/components/mascotas/MedicacionExtrasFields";
 import VacunasCatalogoList from "@/components/mascotas/VacunasCatalogoList";
 import {
   actualizarVacuna,
@@ -462,6 +466,8 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
     titulo: "",
     detalle: "",
     fecha_proxima: "",
+    de_por_vida: false,
+    horarios: [""],
   });
   const [tratamientoForm, setTratamientoForm] = useState({
     titulo: "",
@@ -469,6 +475,7 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
     fecha_inicio: "",
     fecha_fin: "",
     de_por_vida: false,
+    horarios: [""],
   });
 
   function syncSeleccion(items, setCurrent) {
@@ -974,7 +981,13 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
           onSelect={setRecordatorioSel}
           emptyLabel="Sin recordatorios previos."
           optionLabel={(r) =>
-            `${r.titulo}${r.fecha_proxima ? ` · ${formatDate(r.fecha_proxima)}` : ""}`
+            `${r.titulo}${
+              r.de_por_vida
+                ? " · de por vida"
+                : r.fecha_proxima
+                  ? ` · ${formatDate(r.fecha_proxima)}`
+                  : ""
+            }${formatHorariosLabel(r.horarios) ? ` · ${formatHorariosLabel(r.horarios)}` : ""}`
           }
           renderDetalle={(r) => (
             <div className="space-y-1 text-sm text-stone-700">
@@ -986,7 +999,14 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
                 ) : null}
               </p>
               {r.detalle ? <p>{r.detalle}</p> : null}
-              <p>Fecha: {formatDate(r.fecha_proxima) || "—"}</p>
+              <p>
+                {r.de_por_vida
+                  ? "De por vida"
+                  : `Fecha: ${formatDate(r.fecha_proxima) || "—"}`}
+              </p>
+              {formatHorariosLabel(r.horarios) ? (
+                <p>Horarios: {formatHorariosLabel(r.horarios)}</p>
+              ) : null}
             </div>
           )}
           form={
@@ -1005,12 +1025,15 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
                     paciente_id: paciente.id,
                     cliente_id: paciente.cliente_id || paciente.clinica_clientes?.id || null,
                     ...recordatorioForm,
+                    horarios: normalizeHorarios(recordatorioForm.horarios),
                   });
                   setRecordatorioForm({
                     tipo: "medicacion",
                     titulo: "",
                     detalle: "",
                     fecha_proxima: "",
+                    de_por_vida: false,
+                    horarios: [""],
                   });
                   setFichaMsg("Recordatorio cargado para el tutor.");
                   await reloadFicha();
@@ -1046,14 +1069,37 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
                 value={recordatorioForm.detalle}
                 onChange={(e) => setRecordatorioForm((v) => ({ ...v, detalle: e.target.value }))}
               />
-              <input
-                type="date"
-                className={fieldClass}
-                value={recordatorioForm.fecha_proxima}
-                onChange={(e) =>
-                  setRecordatorioForm((v) => ({ ...v, fecha_proxima: e.target.value }))
-                }
-              />
+              {recordatorioForm.tipo === "medicacion" ? (
+                <MedicacionExtrasFields
+                  fieldClass={fieldClass}
+                  horarios={recordatorioForm.horarios}
+                  onHorariosChange={(horarios) =>
+                    setRecordatorioForm((v) => ({ ...v, horarios }))
+                  }
+                  dePorVida={recordatorioForm.de_por_vida}
+                  onDePorVidaChange={(de_por_vida) =>
+                    setRecordatorioForm((v) => ({
+                      ...v,
+                      de_por_vida,
+                      fecha_proxima: de_por_vida ? "" : v.fecha_proxima,
+                    }))
+                  }
+                  fechaFin={recordatorioForm.fecha_proxima}
+                  onFechaFinChange={(fecha_proxima) =>
+                    setRecordatorioForm((v) => ({ ...v, fecha_proxima }))
+                  }
+                  fechaFinLabel="Hasta / próxima fecha"
+                />
+              ) : (
+                <input
+                  type="date"
+                  className={fieldClass}
+                  value={recordatorioForm.fecha_proxima}
+                  onChange={(e) =>
+                    setRecordatorioForm((v) => ({ ...v, fecha_proxima: e.target.value }))
+                  }
+                />
+              )}
               <button type="submit" className={primaryBtnClass} disabled={busyFicha}>
                 Cargar para el tutor
               </button>
@@ -1068,7 +1114,9 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
           onSelect={setTratamientoSel}
           emptyLabel="Sin tratamientos previos."
           optionLabel={(t) =>
-            `${t.titulo}${t.de_por_vida ? " · de por vida" : t.fecha_fin ? ` · hasta ${formatDate(t.fecha_fin)}` : ""}`
+            `${t.titulo}${t.de_por_vida ? " · de por vida" : t.fecha_fin ? ` · hasta ${formatDate(t.fecha_fin)}` : ""}${
+              formatHorariosLabel(t.horarios) ? ` · ${formatHorariosLabel(t.horarios)}` : ""
+            }`
           }
           renderDetalle={(t) => (
             <div className="space-y-1 text-sm text-stone-700">
@@ -1085,6 +1133,9 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
                   ? "De por vida"
                   : `Fin: ${formatDate(t.fecha_fin) || "—"}`}
               </p>
+              {formatHorariosLabel(t.horarios) ? (
+                <p>Horarios: {formatHorariosLabel(t.horarios)}</p>
+              ) : null}
             </div>
           )}
           form={
@@ -1102,6 +1153,7 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
                   await crearTratamiento(clinicaId, {
                     paciente_id: paciente.id,
                     ...tratamientoForm,
+                    horarios: normalizeHorarios(tratamientoForm.horarios),
                   });
                   setTratamientoForm({
                     titulo: "",
@@ -1109,6 +1161,7 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
                     fecha_inicio: "",
                     fecha_fin: "",
                     de_por_vida: false,
+                    horarios: [""],
                   });
                   setFichaMsg("Tratamiento guardado.");
                   await reloadFicha();
@@ -1143,31 +1196,26 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
                 }
                 title="Inicio"
               />
-              <label className="flex items-center gap-2 text-sm text-stone-700">
-                <input
-                  type="checkbox"
-                  checked={tratamientoForm.de_por_vida}
-                  onChange={(e) =>
-                    setTratamientoForm((v) => ({
-                      ...v,
-                      de_por_vida: e.target.checked,
-                      fecha_fin: e.target.checked ? "" : v.fecha_fin,
-                    }))
-                  }
-                />
-                De por vida
-              </label>
-              {!tratamientoForm.de_por_vida ? (
-                <input
-                  type="date"
-                  className={fieldClass}
-                  value={tratamientoForm.fecha_fin}
-                  onChange={(e) =>
-                    setTratamientoForm((v) => ({ ...v, fecha_fin: e.target.value }))
-                  }
-                  title="Fecha de finalización"
-                />
-              ) : null}
+              <MedicacionExtrasFields
+                fieldClass={fieldClass}
+                horarios={tratamientoForm.horarios}
+                onHorariosChange={(horarios) =>
+                  setTratamientoForm((v) => ({ ...v, horarios }))
+                }
+                dePorVida={tratamientoForm.de_por_vida}
+                onDePorVidaChange={(de_por_vida) =>
+                  setTratamientoForm((v) => ({
+                    ...v,
+                    de_por_vida,
+                    fecha_fin: de_por_vida ? "" : v.fecha_fin,
+                  }))
+                }
+                fechaFin={tratamientoForm.fecha_fin}
+                onFechaFinChange={(fecha_fin) =>
+                  setTratamientoForm((v) => ({ ...v, fecha_fin }))
+                }
+                fechaFinLabel="Fecha de finalización"
+              />
               <button type="submit" className={primaryBtnClass} disabled={busyFicha}>
                 Guardar tratamiento
               </button>

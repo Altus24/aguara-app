@@ -16,8 +16,8 @@ export function FinalCta() {
             minutos.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row sm:flex-wrap">
-            <Link href="/mascota/T1-001" className={primaryButtonClass}>
-              Conseguir Aguará
+            <Link href="/comprar" className={primaryButtonClass}>
+              Comprar identificador QR
             </Link>
             <Link href="/tutor/registro" className={secondaryButtonClass}>
               Soy tutor

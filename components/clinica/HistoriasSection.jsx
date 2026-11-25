@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   cardClass,
   Field,
   fieldClass,
-  formatDate,
   formatDateTime,
   primaryBtnClass,
   secondaryBtnClass,
@@ -16,24 +15,28 @@ import MascotaRegistroFields, {
   emptyPetFormConCabecera,
   validateMascotaRegistroForm,
 } from "@/components/mascotas/MascotaRegistroFields";
+import MedicacionExtrasFields, {
+  normalizeHorarios,
+} from "@/components/mascotas/MedicacionExtrasFields";
 import {
   actualizarConsulta,
   cerrarConsulta,
   consultaPendienteCompletar,
+  crearArchivosDesdeFiles,
   crearConsulta,
+  crearDesparasitacion,
   crearPaciente,
-  listarArchivosPacienteCompletas,
+  crearVacuna,
   listarClientes,
   listarConsultas,
-  listarDesparasitacionesPacienteCompletas,
   listarPacientes,
-  listarVacunasPacienteCompletas,
   listarVeterinarios,
   obtenerConsulta,
   obtenerPaciente,
 } from "@/lib/chapitas/clinicaOps";
 import { readClinicSession } from "@/lib/chapitas/clinicSession";
-import { esVacunaVencida } from "@/lib/chapitas/vacunas";
+import { crearTratamiento } from "@/lib/chapitas/mascotaPerfil";
+import { proximaFechaDesdeAplicacion, vacunasParaEspecie } from "@/lib/chapitas/vacunas";
 import { confirmGuardar } from "@/lib/confirmAction";
 
 export default function HistoriasSection({ clinicaId }) {
@@ -211,6 +214,11 @@ export function ConsultaForm({
     temperatura: initial?.temperatura ?? "",
     observaciones: initial?.observaciones || "",
   });
+  const [medExtras, setMedExtras] = useState({
+    horarios: [""],
+    de_por_vida: false,
+    fecha_fin: "",
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showNuevoCliente, setShowNuevoCliente] = useState(false);
@@ -352,8 +360,16 @@ export function ConsultaForm({
     setError("");
     try {
       const paciente = pacientesLocal.find((p) => p.id === form.paciente_id);
+      let medicacionTexto = String(form.medicacion || "").trim();
+      if (medicacionTexto) {
+        const horas = normalizeHorarios(medExtras.horarios);
+        if (horas.length) medicacionTexto += `\nHorarios: ${horas.join(" · ")}`;
+        if (medExtras.de_por_vida) medicacionTexto += "\nDe por vida";
+        else if (medExtras.fecha_fin) medicacionTexto += `\nHasta: ${medExtras.fecha_fin}`;
+      }
       const payload = {
         ...form,
+        medicacion: medicacionTexto,
         cliente_id: paciente?.cliente_id || clienteId || null,
       };
       if (initial?.id) {
@@ -378,6 +394,23 @@ export function ConsultaForm({
         );
       } else {
         await crearConsulta(clinicaId, payload);
+        // También deja la medicación en la ficha (tratamiento activo).
+        const tituloMed = String(form.medicacion || "").trim().split("\n")[0];
+        if (tituloMed && form.paciente_id) {
+          try {
+            await crearTratamiento(clinicaId, {
+              paciente_id: form.paciente_id,
+              titulo: tituloMed,
+              detalle: null,
+              fecha_inicio: new Date().toISOString().slice(0, 10),
+              fecha_fin: medExtras.de_por_vida ? null : medExtras.fecha_fin || null,
+              de_por_vida: medExtras.de_por_vida,
+              horarios: normalizeHorarios(medExtras.horarios),
+            });
+          } catch {
+            // La HC ya se guardó; la ficha puede completarse después.
+          }
+        }
       }
       await onSaved();
     } catch (err) {
@@ -589,14 +622,33 @@ export function ConsultaForm({
             onChange={(e) => setForm((f) => ({ ...f, tratamiento: e.target.value }))}
           />
         </Field>
-        <Field label="Medicación" id="hc-med">
+        <Field label="Medicación" id="hc-med" className="sm:col-span-2">
           <textarea
             id="hc-med"
             rows={2}
             className={fieldClass}
             value={form.medicacion}
             onChange={(e) => setForm((f) => ({ ...f, medicacion: e.target.value }))}
+            placeholder="Nombre del medicamento / indicaciones"
           />
+          <div className="mt-2">
+            <MedicacionExtrasFields
+              fieldClass={fieldClass}
+              horarios={medExtras.horarios}
+              onHorariosChange={(horarios) => setMedExtras((v) => ({ ...v, horarios }))}
+              dePorVida={medExtras.de_por_vida}
+              onDePorVidaChange={(de_por_vida) =>
+                setMedExtras((v) => ({
+                  ...v,
+                  de_por_vida,
+                  fecha_fin: de_por_vida ? "" : v.fecha_fin,
+                }))
+              }
+              fechaFin={medExtras.fecha_fin}
+              onFechaFinChange={(fecha_fin) => setMedExtras((v) => ({ ...v, fecha_fin }))}
+              fechaFinLabel="Hasta"
+            />
+          </div>
         </Field>
         <Field label="Peso (kg)" id="hc-peso">
           <input
@@ -660,13 +712,26 @@ export function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged
   const [paciente, setPaciente] = useState(null);
   const [editing, setEditing] = useState(false);
   const [pacientes, setPacientes] = useState([]);
-  const [vacunas, setVacunas] = useState([]);
-  const [desparas, setDesparas] = useState([]);
-  const [archivos, setArchivos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [firmaVetId, setFirmaVetId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [fichaMsg, setFichaMsg] = useState("");
+  const [fichaErr, setFichaErr] = useState("");
+  const [busyFicha, setBusyFicha] = useState(false);
+  const [openAdd, setOpenAdd] = useState(null); // vacuna | desparasitacion | archivo | medicacion
+  const [vacunaForm, setVacunaForm] = useState({ nombre: "", fecha: "" });
+  const [despForm, setDespForm] = useState({ producto: "", fecha: "", proxima_fecha: "" });
+  const [archivoForm, setArchivoForm] = useState({ tipo: "estudio", files: [] });
+  const [medForm, setMedForm] = useState({
+    titulo: "",
+    detalle: "",
+    fecha_inicio: new Date().toISOString().slice(0, 10),
+    fecha_fin: "",
+    de_por_vida: false,
+    horarios: [""],
+  });
+  const archivoInputRef = useRef(null);
 
   async function load() {
     setLoading(true);
@@ -682,15 +747,14 @@ export function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged
 
       if (c.paciente_id) {
         const pac = await obtenerPaciente(c.paciente_id);
-        const [vacunasFull, despRows, arch] = await Promise.all([
-          listarVacunasPacienteCompletas(pac, { clinicaId }),
-          listarDesparasitacionesPacienteCompletas(pac, { clinicaId }),
-          listarArchivosPacienteCompletas(pac, { clinicaId }),
-        ]);
         setPaciente(pac);
-        setVacunas(vacunasFull);
-        setDesparas(despRows);
-        setArchivos(arch);
+        const catalogo = vacunasParaEspecie(pac.especie);
+        setVacunaForm((f) => ({
+          nombre: f.nombre && catalogo.includes(f.nombre) ? f.nombre : catalogo[0] || "",
+          fecha: f.fecha || new Date().toISOString().slice(0, 10),
+        }));
+      } else {
+        setPaciente(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar la consulta.");
@@ -857,64 +921,358 @@ export function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged
           />
         </dl>
 
-        <div className="mt-5 grid gap-4 border-t border-stone-100 pt-4 lg:grid-cols-3">
-          <div>
-            <h3 className="text-sm font-semibold text-aguara-ink">Vacunas del paciente</h3>
-            {vacunas.length === 0 ? (
-              <p className="mt-2 text-sm text-stone-500">Sin vacunas.</p>
-            ) : (
-              <ul className="mt-2 space-y-1 text-sm text-stone-700">
-                {vacunas.map((v) => (
-                  <li key={`${v.origen || "clinica"}-${v.id}`}>
-                    <strong>{v.nombre}</strong> · {formatDate(v.fecha)}
-                    {esVacunaVencida(v) ? (
-                      <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-800">
-                        Vencida
-                      </span>
-                    ) : null}
-                    {v.origen === "tutor" ? " · (tutor)" : ""}
-                  </li>
-                ))}
-              </ul>
-            )}
+        {paciente && consulta.clinica_id === clinicaId ? (
+          <div className="mt-5 space-y-3 border-t border-stone-100 pt-4">
+            <div>
+              <p className="text-sm font-medium text-aguara-ink">Cargar en la ficha del paciente</p>
+              <p className="mt-0.5 text-xs text-stone-500">
+                Lo que agregues acá también queda en la ficha. El historial previo se ve desde
+                Pacientes.
+              </p>
+              {fichaMsg ? <p className="mt-2 text-sm text-emerald-700">{fichaMsg}</p> : null}
+              {fichaErr ? <p className="mt-2 text-sm text-red-700">{fichaErr}</p> : null}
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <HcAddBlock
+                title="Vacuna"
+                open={openAdd === "vacuna"}
+                onToggle={() =>
+                  setOpenAdd((v) => (v === "vacuna" ? null : "vacuna"))
+                }
+              >
+                <form
+                  className="space-y-2"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!(await confirmGuardar(`la vacuna “${vacunaForm.nombre.trim()}”`))) {
+                      return;
+                    }
+                    setBusyFicha(true);
+                    setFichaMsg("");
+                    setFichaErr("");
+                    try {
+                      const fecha =
+                        vacunaForm.fecha || new Date().toISOString().slice(0, 10);
+                      await crearVacuna(clinicaId, {
+                        paciente_id: paciente.id,
+                        nombre: vacunaForm.nombre,
+                        fecha,
+                        proxima_fecha: proximaFechaDesdeAplicacion(fecha),
+                        veterinario_id: consulta.veterinario_id || null,
+                      });
+                      setFichaMsg("Vacuna cargada en la ficha del paciente.");
+                      setOpenAdd(null);
+                      setVacunaForm({
+                        nombre: vacunasParaEspecie(paciente.especie)[0] || "",
+                        fecha: new Date().toISOString().slice(0, 10),
+                      });
+                    } catch (err) {
+                      setFichaErr(
+                        err instanceof Error ? err.message : "No se pudo cargar la vacuna.",
+                      );
+                    } finally {
+                      setBusyFicha(false);
+                    }
+                  }}
+                >
+                  <select
+                    required
+                    className={fieldClass}
+                    value={vacunaForm.nombre}
+                    onChange={(e) =>
+                      setVacunaForm((f) => ({ ...f, nombre: e.target.value }))
+                    }
+                  >
+                    {vacunasParaEspecie(paciente.especie).map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="block text-xs text-stone-500">
+                    Fecha de colocación
+                    <input
+                      type="date"
+                      required
+                      className={`${fieldClass} mt-1`}
+                      value={vacunaForm.fecha}
+                      onChange={(e) =>
+                        setVacunaForm((f) => ({ ...f, fecha: e.target.value }))
+                      }
+                    />
+                  </label>
+                  <button type="submit" className={primaryBtnClass} disabled={busyFicha}>
+                    Guardar vacuna
+                  </button>
+                </form>
+              </HcAddBlock>
+
+              <HcAddBlock
+                title="Desparasitación"
+                open={openAdd === "desparasitacion"}
+                onToggle={() =>
+                  setOpenAdd((v) => (v === "desparasitacion" ? null : "desparasitacion"))
+                }
+              >
+                <form
+                  className="space-y-2"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (
+                      !(await confirmGuardar(
+                        `la desparasitación “${despForm.producto.trim()}”`,
+                      ))
+                    ) {
+                      return;
+                    }
+                    setBusyFicha(true);
+                    setFichaMsg("");
+                    setFichaErr("");
+                    try {
+                      await crearDesparasitacion(clinicaId, {
+                        paciente_id: paciente.id,
+                        ...despForm,
+                      });
+                      setDespForm({ producto: "", fecha: "", proxima_fecha: "" });
+                      setFichaMsg("Desparasitación cargada en la ficha del paciente.");
+                      setOpenAdd(null);
+                    } catch (err) {
+                      setFichaErr(
+                        err instanceof Error
+                          ? err.message
+                          : "No se pudo cargar la desparasitación.",
+                      );
+                    } finally {
+                      setBusyFicha(false);
+                    }
+                  }}
+                >
+                  <input
+                    required
+                    placeholder="Producto"
+                    className={fieldClass}
+                    value={despForm.producto}
+                    onChange={(e) =>
+                      setDespForm((v) => ({ ...v, producto: e.target.value }))
+                    }
+                  />
+                  <label className="block text-xs text-stone-500">
+                    Fecha de aplicación
+                    <input
+                      type="date"
+                      className={`${fieldClass} mt-1`}
+                      value={despForm.fecha}
+                      onChange={(e) =>
+                        setDespForm((v) => ({ ...v, fecha: e.target.value }))
+                      }
+                    />
+                  </label>
+                  <label className="block text-xs text-stone-500">
+                    Fecha de caducidad
+                    <input
+                      type="date"
+                      className={`${fieldClass} mt-1`}
+                      value={despForm.proxima_fecha}
+                      onChange={(e) =>
+                        setDespForm((v) => ({ ...v, proxima_fecha: e.target.value }))
+                      }
+                    />
+                  </label>
+                  <button type="submit" className={primaryBtnClass} disabled={busyFicha}>
+                    Guardar desparasitación
+                  </button>
+                </form>
+              </HcAddBlock>
+
+              <HcAddBlock
+                title="Archivo"
+                open={openAdd === "archivo"}
+                onToggle={() =>
+                  setOpenAdd((v) => (v === "archivo" ? null : "archivo"))
+                }
+              >
+                <form
+                  className="space-y-2"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const files = archivoForm.files || [];
+                    if (!files.length) {
+                      setFichaErr("Seleccioná al menos un archivo del ordenador.");
+                      return;
+                    }
+                    const label =
+                      files.length === 1
+                        ? `el archivo “${files[0].name}”`
+                        : `los ${files.length} archivos seleccionados`;
+                    if (!(await confirmGuardar(label))) return;
+                    setBusyFicha(true);
+                    setFichaMsg("");
+                    setFichaErr("");
+                    try {
+                      await crearArchivosDesdeFiles(clinicaId, {
+                        paciente_id: paciente.id,
+                        consulta_id: consulta.id,
+                        tipo: archivoForm.tipo,
+                        files,
+                      });
+                      setArchivoForm({ tipo: "estudio", files: [] });
+                      if (archivoInputRef.current) archivoInputRef.current.value = "";
+                      setFichaMsg(
+                        files.length === 1
+                          ? "Archivo cargado en la ficha del paciente."
+                          : `${files.length} archivos cargados en la ficha del paciente.`,
+                      );
+                      setOpenAdd(null);
+                    } catch (err) {
+                      setFichaErr(
+                        err instanceof Error ? err.message : "No se pudo adjuntar el archivo.",
+                      );
+                    } finally {
+                      setBusyFicha(false);
+                    }
+                  }}
+                >
+                  <select
+                    className={fieldClass}
+                    value={archivoForm.tipo}
+                    onChange={(e) =>
+                      setArchivoForm((v) => ({ ...v, tipo: e.target.value }))
+                    }
+                  >
+                    <option value="estudio">Estudio</option>
+                    <option value="foto">Foto</option>
+                    <option value="lab">Laboratorio</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                  <label className="block text-xs text-stone-500">
+                    Archivos del ordenador
+                    <input
+                      ref={archivoInputRef}
+                      required
+                      type="file"
+                      multiple
+                      className={`${fieldClass} mt-1`}
+                      onChange={(e) =>
+                        setArchivoForm((v) => ({
+                          ...v,
+                          files: Array.from(e.target.files || []),
+                        }))
+                      }
+                    />
+                  </label>
+                  {archivoForm.files?.length ? (
+                    <ul className="space-y-1 text-xs text-stone-600">
+                      {archivoForm.files.map((f) => (
+                        <li key={`${f.name}-${f.size}-${f.lastModified}`}>
+                          {f.name} · {(f.size / 1024).toFixed(0)} KB
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <button type="submit" className={primaryBtnClass} disabled={busyFicha}>
+                    {archivoForm.files?.length > 1 ? "Adjuntar archivos" : "Adjuntar"}
+                  </button>
+                </form>
+              </HcAddBlock>
+
+              <HcAddBlock
+                title="Medicación"
+                open={openAdd === "medicacion"}
+                onToggle={() =>
+                  setOpenAdd((v) => (v === "medicacion" ? null : "medicacion"))
+                }
+              >
+                <form
+                  className="space-y-2"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!(await confirmGuardar(`la medicación “${medForm.titulo.trim()}”`))) {
+                      return;
+                    }
+                    setBusyFicha(true);
+                    setFichaMsg("");
+                    setFichaErr("");
+                    try {
+                      await crearTratamiento(clinicaId, {
+                        paciente_id: paciente.id,
+                        titulo: medForm.titulo,
+                        detalle: medForm.detalle,
+                        fecha_inicio: medForm.fecha_inicio,
+                        fecha_fin: medForm.fecha_fin,
+                        de_por_vida: medForm.de_por_vida,
+                        horarios: normalizeHorarios(medForm.horarios),
+                      });
+                      setMedForm({
+                        titulo: "",
+                        detalle: "",
+                        fecha_inicio: new Date().toISOString().slice(0, 10),
+                        fecha_fin: "",
+                        de_por_vida: false,
+                        horarios: [""],
+                      });
+                      setFichaMsg("Medicación cargada en la ficha del paciente.");
+                      setOpenAdd(null);
+                    } catch (err) {
+                      setFichaErr(
+                        err instanceof Error ? err.message : "No se pudo cargar la medicación.",
+                      );
+                    } finally {
+                      setBusyFicha(false);
+                    }
+                  }}
+                >
+                  <input
+                    required
+                    placeholder="Nombre del medicamento"
+                    className={fieldClass}
+                    value={medForm.titulo}
+                    onChange={(e) => setMedForm((v) => ({ ...v, titulo: e.target.value }))}
+                  />
+                  <input
+                    placeholder="Detalle / dosis"
+                    className={fieldClass}
+                    value={medForm.detalle}
+                    onChange={(e) => setMedForm((v) => ({ ...v, detalle: e.target.value }))}
+                  />
+                  <label className="block text-xs text-stone-500">
+                    Inicio
+                    <input
+                      type="date"
+                      required
+                      className={`${fieldClass} mt-1`}
+                      value={medForm.fecha_inicio}
+                      onChange={(e) =>
+                        setMedForm((v) => ({ ...v, fecha_inicio: e.target.value }))
+                      }
+                    />
+                  </label>
+                  <MedicacionExtrasFields
+                    fieldClass={fieldClass}
+                    horarios={medForm.horarios}
+                    onHorariosChange={(horarios) => setMedForm((v) => ({ ...v, horarios }))}
+                    dePorVida={medForm.de_por_vida}
+                    onDePorVidaChange={(de_por_vida) =>
+                      setMedForm((v) => ({
+                        ...v,
+                        de_por_vida,
+                        fecha_fin: de_por_vida ? "" : v.fecha_fin,
+                      }))
+                    }
+                    fechaFin={medForm.fecha_fin}
+                    onFechaFinChange={(fecha_fin) =>
+                      setMedForm((v) => ({ ...v, fecha_fin }))
+                    }
+                    fechaFinLabel="Fecha de finalización"
+                  />
+                  <button type="submit" className={primaryBtnClass} disabled={busyFicha}>
+                    Guardar medicación
+                  </button>
+                </form>
+              </HcAddBlock>
+            </div>
           </div>
-          <div>
-            <h3 className="text-sm font-semibold text-aguara-ink">Desparasitaciones</h3>
-            {desparas.length === 0 ? (
-              <p className="mt-2 text-sm text-stone-500">Sin registros.</p>
-            ) : (
-              <ul className="mt-2 space-y-1 text-sm text-stone-700">
-                {desparas.map((d) => (
-                  <li key={d.id}>
-                    <strong>{d.producto}</strong> · {formatDate(d.fecha)}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-aguara-ink">Archivos</h3>
-            {archivos.length === 0 ? (
-              <p className="mt-2 text-sm text-stone-500">Sin archivos.</p>
-            ) : (
-              <ul className="mt-2 space-y-1 text-sm">
-                {archivos.map((a) => (
-                  <li key={a.id}>
-                    <a
-                      href={a.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-medium text-aguara-orange underline"
-                    >
-                      {a.nombre}
-                    </a>{" "}
-                    <span className="text-stone-500">({a.tipo})</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
+        ) : null}
         {consulta.cerrada ? (
           <div className="mt-4 rounded-xl bg-emerald-50 px-3 py-3 text-sm text-emerald-900">
             <p>
@@ -1009,6 +1367,26 @@ function Item({ label, value, wide }) {
     <div className={wide ? "sm:col-span-2" : undefined}>
       <dt className="text-stone-500">{label}</dt>
       <dd className="mt-0.5 text-aguara-ink">{value || "—"}</dd>
+    </div>
+  );
+}
+
+function HcAddBlock({ title, open, onToggle, children }) {
+  return (
+    <div className="rounded-xl border border-stone-100 bg-stone-50/60 px-3 py-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-aguara-ink">{title}</h3>
+        <button
+          type="button"
+          aria-label={open ? `Cerrar ${title}` : `Agregar ${title}`}
+          aria-expanded={open}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-stone-300 bg-white text-lg font-semibold leading-none text-aguara-ink hover:border-aguara-orange hover:text-aguara-orange"
+          onClick={onToggle}
+        >
+          {open ? "×" : "+"}
+        </button>
+      </div>
+      {open ? <div className="mt-3">{children}</div> : null}
     </div>
   );
 }

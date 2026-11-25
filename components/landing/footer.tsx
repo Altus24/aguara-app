@@ -27,7 +27,12 @@ export function LandingFooter() {
               </a>
             </li>
             <li>
-              <Link href="/mascota/T1-001" className="hover:text-aguara-ink">
+              <Link href="/comprar" className="hover:text-aguara-ink">
+                Comprar identificador
+              </Link>
+            </li>
+            <li>
+              <Link href="/tutor/registro" className="hover:text-aguara-ink">
                 Registrar mascota
               </Link>
             </li>

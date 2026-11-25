@@ -22,22 +22,35 @@ export function Hero() {
             mensuales.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Link href="/mascota/T1-001" className={primaryButtonClass}>
-              Conseguir Aguará
+            <Link href="/comprar" className={primaryButtonClass}>
+              Comprar identificador QR
             </Link>
-            <a href="#como-funciona" className={secondaryButtonClass}>
-              Ver cómo funciona
-            </a>
+            <Link href="/tutor/registro" className={secondaryButtonClass}>
+              Registrar mascota gratis
+            </Link>
           </div>
-          <p className="mt-5 text-sm text-stone-500">
-            ¿Ya tenés el QR? Escanealo o abrí{" "}
+          <p className="mt-5 flex items-center gap-2 text-sm text-stone-500">
+            <svg viewBox="0 0 24 24" className="size-4 shrink-0 text-aguara-orange" aria-hidden>
+              <path
+                fill="currentColor"
+                d="M3 7h13l3 5v6h-2.2a2.5 2.5 0 0 1-4.6 0H9.8a2.5 2.5 0 0 1-4.6 0H3V7zm2 2v4h9.4l1.8-3H5zm2.5 8a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm9 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"
+              />
+            </svg>
+            Envío a domicilio o retiro en clínicas adheridas
+          </p>
+          <p className="mt-3 text-sm text-stone-500">
+            ¿Ya tenés el QR?{" "}
+            <a href="#comprar" className="font-medium text-aguara-orange hover:text-aguara-orange-deep">
+              Ver compra online
+            </a>{" "}
+            o{" "}
             <Link
-              href="/mascota/T1-001"
+              href="/tutor/registro"
               className="font-medium text-aguara-orange hover:text-aguara-orange-deep"
             >
-              el formulario en blanco
-            </Link>{" "}
-            y registrá mascota y tutor.
+              registrá mascota y tutor
+            </Link>
+            .
           </p>
         </div>
         <PhonePreview />
