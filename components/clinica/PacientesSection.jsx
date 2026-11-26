@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import CitaForm from "@/components/clinica/CitaForm";
 import { ConsultaForm, DetalleConsulta } from "@/components/clinica/HistoriasSection";
+import useClinicaCabeceraOptions from "@/components/clinica/useClinicaCabeceraOptions";
 import {
   cardClass,
   Field,
@@ -43,7 +44,6 @@ import {
   obtenerPaciente,
 } from "@/lib/chapitas/clinicaOps";
 import { listarServiciosActivos } from "@/lib/chapitas/clinicas";
-import { readClinicSession } from "@/lib/chapitas/clinicSession";
 import { crearTratamiento } from "@/lib/chapitas/mascotaPerfil";
 import { supabase } from "@/lib/chapitas/supabaseClient";
 import { confirmGuardar } from "@/lib/confirmAction";
@@ -187,12 +187,12 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
   const [foto, setFoto] = useState(null);
   const [preview, setPreview] = useState(null);
   const previewRef = useRef(null);
-  const clinicasCabecera = useMemo(() => {
-    const session = readClinicSession();
-    if (session?.id === clinicaId) {
-      return [{ id: session.id, nombre: session.nombre, ciudad: session.ciudad }];
-    }
-    return clinicaId ? [{ id: clinicaId, nombre: "Esta clínica" }] : [];
+  const clinicasCabecera = useClinicaCabeceraOptions(clinicaId);
+
+  useEffect(() => {
+    setForm((f) =>
+      f.clinica_cabecera_id === clinicaId ? f : { ...f, clinica_cabecera_id: clinicaId || "" },
+    );
   }, [clinicaId]);
 
   useEffect(() => {

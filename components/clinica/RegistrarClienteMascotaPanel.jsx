@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
+import useClinicaCabeceraOptions from "@/components/clinica/useClinicaCabeceraOptions";
 import {
   Field,
   fieldClass,
@@ -11,8 +12,13 @@ import MascotaRegistroFields, {
   emptyPetFormConCabecera,
   validateMascotaRegistroForm,
 } from "@/components/mascotas/MascotaRegistroFields";
-import { crearCliente, crearPaciente } from "@/lib/chapitas/clinicaOps";
-import { readClinicSession } from "@/lib/chapitas/clinicSession";
+import {
+  asociarMascotaExistenteACliente,
+  buscarMascotaPorIdentificador,
+  crearCliente,
+  crearPaciente,
+  listarPacientes,
+} from "@/lib/chapitas/clinicaOps";
 import { confirmGuardar } from "@/lib/confirmAction";
 
 const emptyOwner = {
@@ -24,30 +30,75 @@ const emptyOwner = {
 };
 
 /**
- * Alta rápida de cliente (tutor Aguará) + mascota desde agenda / historias.
+ * Alta rápida de cliente (tutor Aguará) + mascota (nueva o existente).
  * La contraseña del portal tutor es el email (regla actual de TutorAuth).
  */
 export default function RegistrarClienteMascotaPanel({
   clinicaId,
+  clinicaNombre,
   fotoInputId = "reg-cliente-mascota",
   onCancel,
   onCreated,
 }) {
   const [owner, setOwner] = useState(emptyOwner);
+  const [mascotaModo, setMascotaModo] = useState("crear"); // crear | asociar
   const [petForm, setPetForm] = useState(() => emptyPetFormConCabecera(clinicaId));
+  const [codigoIdentificador, setCodigoIdentificador] = useState("");
+  const [mascotaPreview, setMascotaPreview] = useState(null);
+  const [pacienteExistenteId, setPacienteExistenteId] = useState("");
+  const [pacientesClinica, setPacientesClinica] = useState([]);
+  const [buscando, setBuscando] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const clinicasCabecera = useMemo(() => {
-    const session = readClinicSession();
-    if (session?.id === clinicaId) {
-      return [{ id: session.id, nombre: session.nombre, ciudad: session.ciudad }];
-    }
-    return clinicaId ? [{ id: clinicaId, nombre: "Esta clínica" }] : [];
+  const clinicasCabecera = useClinicaCabeceraOptions(clinicaId, {
+    nombreFallback: clinicaNombre || "Esta clínica",
+  });
+
+  useEffect(() => {
+    setPetForm((f) =>
+      f.clinica_cabecera_id === clinicaId ? f : { ...f, clinica_cabecera_id: clinicaId || "" },
+    );
   }, [clinicaId]);
+
+  useEffect(() => {
+    if (mascotaModo !== "asociar") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await listarPacientes(clinicaId);
+        if (!cancelled) setPacientesClinica(rows || []);
+      } catch {
+        if (!cancelled) setPacientesClinica([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mascotaModo, clinicaId]);
 
   function updateOwner(key) {
     return (event) => setOwner((prev) => ({ ...prev, [key]: event.target.value }));
+  }
+
+  async function handleBuscarIdentificador() {
+    setError("");
+    setMascotaPreview(null);
+    setPacienteExistenteId("");
+    if (!codigoIdentificador.trim()) {
+      setError("Ingresá el código del identificador.");
+      return;
+    }
+    setBuscando(true);
+    try {
+      const m = await buscarMascotaPorIdentificador(codigoIdentificador);
+      if (!m) throw new Error("No se encontró una mascota con ese identificador.");
+      setMascotaPreview(m);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo buscar la mascota.");
+    } finally {
+      setBuscando(false);
+    }
   }
 
   async function handleSubmit(event) {
@@ -70,19 +121,27 @@ export default function RegistrarClienteMascotaPanel({
       setError("Ingresá un teléfono válido.");
       return;
     }
-    const invalidPet = validateMascotaRegistroForm(petForm);
-    if (invalidPet) {
-      setError(invalidPet);
+
+    if (mascotaModo === "crear") {
+      const invalidPet = validateMascotaRegistroForm(petForm);
+      if (invalidPet) {
+        setError(invalidPet);
+        return;
+      }
+    } else if (
+      !pacienteExistenteId &&
+      !mascotaPreview?.id &&
+      !codigoIdentificador.trim()
+    ) {
+      setError("Buscá un identificador o elegí una mascota ya cargada en la clínica.");
       return;
     }
 
-    if (
-      !(await confirmGuardar(
-        `el cliente “${nombre}” y la mascota “${petForm.nombre_mascota.trim()}”`,
-      ))
-    ) {
-      return;
-    }
+    const confirmMsg =
+      mascotaModo === "crear"
+        ? `el cliente “${nombre}” y la mascota “${petForm.nombre_mascota.trim()}”`
+        : `el cliente “${nombre}” y la asociación de mascota`;
+    if (!(await confirmGuardar(confirmMsg))) return;
 
     setSaving(true);
     try {
@@ -93,25 +152,34 @@ export default function RegistrarClienteMascotaPanel({
         telefono_secundario: owner.telefono_secundario.trim() || null,
         direccion: owner.direccion.trim() || null,
       });
-      const paciente = await crearPaciente(clinicaId, {
-        cliente_id: cliente.id,
-        nombre: petForm.nombre_mascota,
-        especie: petForm.especie,
-        raza: petForm.raza,
-        sexo: petForm.sexo,
-        castrado: petForm.castrado,
-        temperamento: petForm.temperamento,
-        fecha_nacimiento: petForm.fecha_nacimiento,
-        peso: petForm.peso,
-        nro_chip: petForm.nro_chip,
-        enfermedad: petForm.enfermedad,
-        medicacion: petForm.medicacion,
-        datos_adicionales: petForm.datos_adicionales,
-        clinica_cabecera_id: petForm.clinica_cabecera_id || clinicaId,
-        clinica_ref_nombre: petForm.clinica_ref_nombre,
-        clinica_ref_direccion: petForm.clinica_ref_direccion,
-        clinica_ref_telefono: petForm.clinica_ref_telefono,
-      });
+
+      let paciente = null;
+      if (mascotaModo === "crear") {
+        paciente = await crearPaciente(clinicaId, {
+          cliente_id: cliente.id,
+          nombre: petForm.nombre_mascota,
+          especie: petForm.especie,
+          raza: petForm.raza,
+          sexo: petForm.sexo,
+          castrado: petForm.castrado,
+          temperamento: petForm.temperamento,
+          fecha_nacimiento: petForm.fecha_nacimiento,
+          peso: petForm.peso,
+          nro_chip: petForm.nro_chip,
+          enfermedad: petForm.enfermedad,
+          medicacion: petForm.medicacion,
+          datos_adicionales: petForm.datos_adicionales,
+          clinica_cabecera_id: petForm.clinica_cabecera_id || clinicaId,
+          clinica_ref_nombre: petForm.clinica_ref_nombre,
+          clinica_ref_direccion: petForm.clinica_ref_direccion,
+          clinica_ref_telefono: petForm.clinica_ref_telefono,
+        });
+      } else {
+        paciente = await asociarMascotaExistenteACliente(clinicaId, cliente.id, {
+          pacienteId: pacienteExistenteId || null,
+          codigo: pacienteExistenteId ? null : mascotaPreview?.id || codigoIdentificador,
+        });
+      }
       onCreated?.({ cliente, paciente });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo registrar el cliente.");
@@ -190,16 +258,100 @@ export default function RegistrarClienteMascotaPanel({
         </Field>
       </div>
 
-      <div className="border-t border-aguara-orange/15 pt-3">
-        <p className="mb-2 text-sm font-medium text-aguara-ink">Mascota</p>
-        <MascotaRegistroFields
-          form={petForm}
-          onChange={(name, value) => setPetForm((f) => ({ ...f, [name]: value }))}
-          fieldClass={fieldClass}
-          fotoInputId={fotoInputId}
-          showTitle={false}
-          clinicas={clinicasCabecera}
-        />
+      <div className="border-t border-aguara-orange/15 pt-3 space-y-3">
+        <p className="text-sm font-medium text-aguara-ink">Mascota</p>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { id: "crear", label: "Crear mascota nueva" },
+            { id: "asociar", label: "Asociar existente" },
+          ].map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                mascotaModo === opt.id
+                  ? "border-aguara-orange bg-white text-aguara-ink"
+                  : "border-stone-200 bg-white/70 text-stone-600 hover:border-stone-300"
+              }`}
+              onClick={() => {
+                setMascotaModo(opt.id);
+                setError("");
+                setMascotaPreview(null);
+                setPacienteExistenteId("");
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {mascotaModo === "crear" ? (
+          <MascotaRegistroFields
+            form={petForm}
+            onChange={(name, value) => setPetForm((f) => ({ ...f, [name]: value }))}
+            fieldClass={fieldClass}
+            fotoInputId={fotoInputId}
+            showTitle={false}
+            clinicas={clinicasCabecera}
+          />
+        ) : (
+          <div className="space-y-3 rounded-xl border border-stone-200 bg-white/70 p-3">
+            <Field label="Código de identificador Aguará" id={`${fotoInputId}-codigo`}>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  id={`${fotoInputId}-codigo`}
+                  className={fieldClass}
+                  placeholder="Ej. T1-001 o DIG-…"
+                  value={codigoIdentificador}
+                  onChange={(e) => {
+                    setCodigoIdentificador(e.target.value);
+                    setMascotaPreview(null);
+                  }}
+                />
+                <button
+                  type="button"
+                  className={secondaryBtnClass}
+                  disabled={buscando}
+                  onClick={handleBuscarIdentificador}
+                >
+                  {buscando ? "Buscando…" : "Buscar"}
+                </button>
+              </div>
+            </Field>
+            {mascotaPreview ? (
+              <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                Encontrada: <strong>{mascotaPreview.nombre_mascota}</strong>
+                {mascotaPreview.especie ? ` · ${mascotaPreview.especie}` : ""}
+                <span className="mt-0.5 block text-xs">ID {mascotaPreview.id}</span>
+              </p>
+            ) : null}
+            <Field label="O mascota ya cargada en esta clínica" id={`${fotoInputId}-pac`}>
+              <select
+                id={`${fotoInputId}-pac`}
+                className={fieldClass}
+                value={pacienteExistenteId}
+                onChange={(e) => {
+                  setPacienteExistenteId(e.target.value);
+                  if (e.target.value) {
+                    setMascotaPreview(null);
+                    setCodigoIdentificador("");
+                  }
+                }}
+              >
+                <option value="">— Ninguna —</option>
+                {pacientesClinica.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre}
+                    {p.especie ? ` · ${p.especie}` : ""}
+                    {p.clinica_clientes?.nombre_completo
+                      ? ` (dueño: ${p.clinica_clientes.nombre_completo})`
+                      : ""}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+        )}
       </div>
 
       {error ? (

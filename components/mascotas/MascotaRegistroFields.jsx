@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { razasParaEspecie } from "@/lib/chapitas/razas";
 import { confirmGuardar } from "@/lib/confirmAction";
@@ -81,11 +81,34 @@ export default function MascotaRegistroFields({
   const razaActual = form.raza || "";
   const razaFueraDeLista = Boolean(razaActual) && !razas.includes(razaActual);
   const tieneClinicaRef = Boolean(String(form.clinica_ref_nombre || "").trim());
-  const clinicaSelectValue = form.clinica_cabecera_id
+  const clinicasValidas = Array.isArray(clinicas)
+    ? clinicas.filter((c) => c?.id && String(c.nombre || "").trim())
+    : [];
+  const cabeceraEnLista = clinicasValidas.some(
+    (c) => String(c.id) === String(form.clinica_cabecera_id || ""),
+  );
+  // Si el id guardado apunta a una clínica borrada, no lo mostramos como valor fantasma.
+  const clinicaSelectValue = cabeceraEnLista
     ? form.clinica_cabecera_id
     : tieneClinicaRef
       ? CLINICA_AGREGAR_VALUE
-      : "";
+      : clinicasValidas.length === 1
+        ? clinicasValidas[0].id
+        : "";
+
+  // Alta desde clínica: si hay una sola opción válida, forzarla como cabecera.
+  useEffect(() => {
+    if (!clinicasValidas.length) return;
+    if (tieneClinicaRef) return;
+    const preferred = clinicasValidas[0]?.id;
+    if (!preferred) return;
+    if (String(form.clinica_cabecera_id || "") === String(preferred)) return;
+    if (cabeceraEnLista && clinicasValidas.length > 1) return;
+    if (clinicasValidas.length === 1 || !cabeceraEnLista) {
+      onChange("clinica_cabecera_id", preferred);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clinicasValidas.map((c) => c.id).join("|"), form.clinica_cabecera_id, tieneClinicaRef]);
 
   function openClinicaRefModal() {
     setDraftRef({
@@ -341,8 +364,8 @@ export default function MascotaRegistroFields({
           <span className="font-normal text-stone-500">(opcional)</span>
         </p>
         <p className="text-xs text-stone-500">
-          Elegí una clínica del sistema o usá “Agregar clínica” para cargar una de
-          referencia.
+          Por defecto queda la clínica donde estás registrando. También podés usar “Agregar
+          clínica” para una de referencia.
         </p>
 
         <div>
@@ -358,18 +381,14 @@ export default function MascotaRegistroFields({
             onChange={(e) => handleClinicaSelectChange(e.target.value)}
             className={fieldClass}
           >
-            {!form.clinica_cabecera_id && !tieneClinicaRef ? (
-              <option value="">Elegí una clínica</option>
-            ) : null}
+            {!clinicaSelectValue ? <option value="">Elegí una clínica</option> : null}
+            {clinicasValidas.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre}
+                {c.ciudad ? ` · ${c.ciudad}` : ""}
+              </option>
+            ))}
             <option value={CLINICA_AGREGAR_VALUE}>Agregar clínica</option>
-            {Array.isArray(clinicas)
-              ? clinicas.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre}
-                    {c.ciudad ? ` · ${c.ciudad}` : ""}
-                  </option>
-                ))
-              : null}
           </select>
         </div>
 

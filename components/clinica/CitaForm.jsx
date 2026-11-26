@@ -11,6 +11,7 @@ import {
   secondaryBtnClass,
 } from "@/components/clinica/ui";
 import RegistrarClienteMascotaPanel from "@/components/clinica/RegistrarClienteMascotaPanel";
+import useClinicaCabeceraOptions from "@/components/clinica/useClinicaCabeceraOptions";
 import MascotaRegistroFields, {
   emptyPetFormConCabecera,
   validateMascotaRegistroForm,
@@ -32,7 +33,6 @@ import {
   esServicioVacunacion,
   listarServiciosDeVeterinario,
 } from "@/lib/chapitas/clinicas";
-import { readClinicSession } from "@/lib/chapitas/clinicSession";
 import { confirmGuardar } from "@/lib/confirmAction";
 
 function etiquetaMascota(p) {
@@ -132,12 +132,12 @@ export default function CitaForm({
   const [showNuevaMascota, setShowNuevaMascota] = useState(false);
   const [petForm, setPetForm] = useState(() => emptyPetFormConCabecera(clinicaId));
   const [savingPet, setSavingPet] = useState(false);
-  const clinicasCabecera = useMemo(() => {
-    const session = readClinicSession();
-    if (session?.id === clinicaId) {
-      return [{ id: session.id, nombre: session.nombre, ciudad: session.ciudad }];
-    }
-    return clinicaId ? [{ id: clinicaId, nombre: "Esta clínica" }] : [];
+  const clinicasCabecera = useClinicaCabeceraOptions(clinicaId);
+
+  useEffect(() => {
+    setPetForm((f) =>
+      f.clinica_cabecera_id === clinicaId ? f : { ...f, clinica_cabecera_id: clinicaId || "" },
+    );
   }, [clinicaId]);
 
   useEffect(() => {
