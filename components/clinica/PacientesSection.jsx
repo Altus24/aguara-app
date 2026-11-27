@@ -693,15 +693,6 @@ export function FichaPaciente({ clinicaId, pacienteId, onBack }) {
                       ) : null}
                     </p>
                     <p className="text-sm text-stone-600">{c.motivo || "Consulta"}</p>
-                    {c.diagnostico ? (
-                      <p className="mt-1 text-sm text-stone-700">Dx: {c.diagnostico}</p>
-                    ) : null}
-                    {c.tratamiento ? (
-                      <p className="text-sm text-stone-700">Tx: {c.tratamiento}</p>
-                    ) : null}
-                    {c.medicacion ? (
-                      <p className="text-sm text-stone-700">Med: {c.medicacion}</p>
-                    ) : null}
                   </div>
                   <button
                     type="button"

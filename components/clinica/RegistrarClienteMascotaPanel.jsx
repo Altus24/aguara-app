@@ -27,6 +27,7 @@ const emptyOwner = {
   telefono: "",
   telefono_secundario: "",
   direccion: "",
+  dni: "",
 };
 
 /**
@@ -149,6 +150,7 @@ export default function RegistrarClienteMascotaPanel({
         telefono,
         telefono_secundario: owner.telefono_secundario.trim() || null,
         direccion: owner.direccion.trim() || null,
+        dni: owner.dni.trim() || null,
       });
 
       let paciente = null;
@@ -244,6 +246,16 @@ export default function RegistrarClienteMascotaPanel({
             className={fieldClass}
             value={owner.telefono_secundario}
             onChange={updateOwner("telefono_secundario")}
+          />
+        </Field>
+        <Field label="DNI" id={`${fotoInputId}-dni`}>
+          <input
+            id={`${fotoInputId}-dni`}
+            inputMode="numeric"
+            autoComplete="off"
+            className={fieldClass}
+            value={owner.dni}
+            onChange={updateOwner("dni")}
           />
         </Field>
         <Field label="Dirección" id={`${fotoInputId}-dir`} className="sm:col-span-2">

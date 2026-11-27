@@ -5,6 +5,11 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
+  formatAccuracyLabel,
+  getCurrentPositionHighAccuracy,
+  getPreciseDevicePosition,
+} from '@/lib/chapitas/deviceGeo';
+import {
   supabase,
   normalizeChapitaId,
   isDynamicChapitaId,
@@ -118,7 +123,9 @@ function FichaMascota() {
     }
   }, [mascota, chapitaId, canActivate]);
 
-  // Escaneo público: intenta GPS del dispositivo (mejor) y si no, IP aproximada.
+  // Escaneo público en 2 pasos (sin romper la ficha si falla el GPS):
+  // 1) aviso inmediato (IP / sin coords)
+  // 2) getCurrentPosition high accuracy → 2ª alerta con coords + precisión en metros
   useEffect(() => {
     if (!mascota?.id) return;
 
@@ -130,55 +137,38 @@ function FichaMascota() {
       /* ignore */
     }
 
-    function readGpsCoords(timeoutMs = 4500) {
-      return new Promise((resolve) => {
-        if (typeof navigator === 'undefined' || !navigator.geolocation) {
-          resolve(null);
-          return;
-        }
-        let settled = false;
-        const finish = (value) => {
-          if (settled) return;
-          settled = true;
-          resolve(value);
-        };
-        const timer = setTimeout(() => finish(null), timeoutMs);
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            clearTimeout(timer);
-            finish({
-              lat: pos.coords.latitude,
-              lon: pos.coords.longitude,
-              accuracy: pos.coords.accuracy,
-            });
-          },
-          () => {
-            clearTimeout(timer);
-            finish(null);
-          },
-          {
-            enableHighAccuracy: false,
-            timeout: timeoutMs,
-            maximumAge: 120000,
-          },
-        );
-      });
-    }
+    const postEscaneo = (payload) =>
+      fetch('/api/chapitas/escaneo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      }).catch(() => null);
 
     (async () => {
+      // Paso 1: registrar ya (ubicación por IP si aplica).
       try {
-        const coords = await readGpsCoords();
-        await fetch('/api/chapitas/escaneo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            mascotaId: mascota.id,
-            ...(coords ? { coords } : {}),
-          }),
-          keepalive: true,
+        await postEscaneo({ mascotaId: mascota.id });
+      } catch {
+        /* ignore */
+      }
+
+      // Paso 2: GPS preciso. HTTPS + permiso; rechazo/timeout no rompe la pantalla.
+      try {
+        if (typeof window !== 'undefined' && !window.isSecureContext) {
+          return;
+        }
+        const coords = await getCurrentPositionHighAccuracy({ timeoutMs: 15000 });
+        await postEscaneo({
+          mascotaId: mascota.id,
+          coords: {
+            lat: coords.lat,
+            lon: coords.lon,
+            accuracy: coords.accuracy,
+          },
         });
       } catch {
-        /* el aviso al tutor no debe romper la ficha pública */
+        /* permiso denegado / timeout / HTTP: se queda el aviso del paso 1 */
       }
     })();
   }, [mascota?.id]);
@@ -283,41 +273,68 @@ function FichaMascota() {
     null;
   const clinicaTelefono = clinicaCabecera?.telefono || mascota?.clinica_ref_telefono || null;
 
-  function handleShareGps() {
+  async function handleShareGps() {
     setGpsMsg('');
     if (!navigator.geolocation) {
       setGpsMsg('Tu navegador no permite compartir ubicación.');
       return;
     }
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      setGpsMsg('La ubicación GPS requiere HTTPS (no funciona por HTTP).');
+      return;
+    }
     setGpsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude } = pos.coords;
-        const mapsUrl = `https://maps.google.com/?q=${latitude},${longitude}`;
-        const text = `Hola, encontré a ${mascota.nombre_mascota}. Mi ubicación aproximada: ${mapsUrl}`;
-        setGpsLoading(false);
-        if (whatsappPhone) {
-          window.open(
-            `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(text)}`,
-            '_blank',
-            'noopener,noreferrer',
-          );
-          return;
+    try {
+      const pos = await getPreciseDevicePosition({ timeoutMs: 15000 });
+      const accLabel = formatAccuracyLabel(pos.accuracy);
+      const text = accLabel
+        ? `Hola, encontré a ${mascota.nombre_mascota}. Mi ubicación (${accLabel}): ${pos.mapsUrl}`
+        : `Hola, encontré a ${mascota.nombre_mascota}. Mi ubicación: ${pos.mapsUrl}`;
+      setGpsLoading(false);
+      if (accLabel && pos.accuracy != null && pos.accuracy > 150) {
+        setGpsMsg(
+          `Ubicación lista (${accLabel}). Para más precisión salí al aire libre o esperá unos segundos y volvé a intentar.`,
+        );
+      } else if (accLabel) {
+        setGpsMsg(`Ubicación lista (${accLabel}).`);
+      }
+      // También actualiza el historial / alerta del tutor con esta fijación.
+      try {
+        await fetch('/api/chapitas/escaneo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mascotaId: mascota.id,
+            coords: { lat: pos.lat, lon: pos.lon, accuracy: pos.accuracy },
+          }),
+          keepalive: true,
+        });
+      } catch {
+        /* no bloquea el share */
+      }
+      if (whatsappPhone) {
+        window.open(
+          `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(text)}`,
+          '_blank',
+          'noopener,noreferrer',
+        );
+        return;
+      }
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: mascota.nombre_mascota, text, url: pos.mapsUrl });
+        } catch {
+          setGpsMsg(pos.mapsUrl);
         }
-        if (navigator.share) {
-          navigator.share({ title: mascota.nombre_mascota, text, url: mapsUrl }).catch(() => {
-            setGpsMsg(mapsUrl);
-          });
-          return;
-        }
-        setGpsMsg(mapsUrl);
-      },
-      () => {
-        setGpsLoading(false);
-        setGpsMsg('No pudimos obtener tu ubicación. Revisá los permisos del navegador.');
-      },
-      { enableHighAccuracy: true, timeout: 15000 },
-    );
+        return;
+      }
+      setGpsMsg(pos.mapsUrl);
+    } catch {
+      setGpsLoading(false);
+      setGpsMsg(
+        'No pudimos obtener la ubicación. Activá el GPS, dale permiso al navegador (y usá HTTPS) y, si podés, salí al aire libre.',
+      );
+    }
   }
 
   if (!chapitaId) {
@@ -521,11 +538,18 @@ function FichaMascota() {
                 className="flex w-full items-center justify-center gap-2.5 rounded-full bg-stone-100 px-5 py-3.5 text-base font-semibold text-aguara-ink transition hover:bg-stone-200 disabled:opacity-60"
               >
                 <PinIcon />
-                {gpsLoading ? 'Obteniendo ubicación…' : 'Compartir mi Ubicación GPS'}
+                {gpsLoading
+                  ? 'Obteniendo GPS… (hasta 15 s)'
+                  : 'Compartir mi Ubicación GPS'}
               </button>
               {gpsMsg ? (
                 <p className="break-all text-center text-xs text-stone-500">{gpsMsg}</p>
-              ) : null}
+              ) : (
+                <p className="text-center text-xs text-stone-400">
+                  Probá por HTTPS en el celular, con permiso de ubicación y GPS activo (mejor al aire
+                  libre o cerca de una ventana).
+                </p>
+              )}
             </div>
           </div>
         </article>

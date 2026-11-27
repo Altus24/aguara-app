@@ -3,8 +3,6 @@ import { NextResponse } from "next/server";
 import { PAGOS, TALLES, ENTREGAS } from "@/lib/ecommerce/catalog";
 import { crearPreferenciaCheckout } from "@/lib/ecommerce/mercadopago";
 
-export const runtime = "nodejs";
-
 export async function POST(request) {
   try {
     const body = await request.json().catch(() => ({}));

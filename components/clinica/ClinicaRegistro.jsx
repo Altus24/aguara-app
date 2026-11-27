@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { useClinicAuth } from "@/context/ClinicAuthContext";
+import { PLAZO_APROBACION_DIAS } from "@/lib/chapitas/clinicaRegistro";
 import {
   ciudadesDeProvincia,
   provinciaPorDefecto,
@@ -23,6 +24,10 @@ const emptyForm = {
   ciudad: "",
   provincia: provinciaPorDefecto(),
   descripcion: "",
+  director_nombre: "",
+  director_matricula: "",
+  director_especialidad: "",
+  director_email: "",
 };
 
 export default function ClinicaRegistro() {
@@ -87,9 +92,17 @@ export default function ClinicaRegistro() {
         Registrar clínica
       </h1>
       <p className="mt-2 text-center text-sm leading-6 text-stone-600">
-        Creá tu cuenta para cargar ubicación, servicios, horarios y stock. Por ahora la
-        contraseña es el mismo email.
+        Solo veterinarios matriculados pueden crear una cuenta. Debés designar un director
+        técnico al crear el perfil.
       </p>
+
+      <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+        <p className="font-semibold">Aprobación de Aguará</p>
+        <p className="mt-1 leading-6">
+          Después de registrarte, el perfil deberá ser aprobado por Aguará App en los siguientes{" "}
+          {PLAZO_APROBACION_DIAS} días. Hasta entonces no vas a poder usar el panel completo.
+        </p>
+      </div>
 
       <form
         onSubmit={handleSubmit}
@@ -221,6 +234,80 @@ export default function ClinicaRegistro() {
           />
         </div>
 
+        <div className="border-t border-stone-100 pt-4">
+          <h2 className="text-sm font-semibold text-aguara-ink">Director técnico</h2>
+          <p className="mt-1 text-xs leading-5 text-stone-500">
+            Obligatorio. Debe ser un veterinario matriculado; queda asociado al perfil de la
+            clínica.
+          </p>
+          <div className="mt-3 space-y-4">
+            <div>
+              <label
+                htmlFor="reg-dir-nombre"
+                className="mb-1 block text-sm font-medium text-stone-800"
+              >
+                Nombre y apellido
+              </label>
+              <input
+                id="reg-dir-nombre"
+                required
+                minLength={2}
+                value={form.director_nombre}
+                onChange={updateField("director_nombre")}
+                className={fieldClass}
+                placeholder="Ej.: Dra. María López"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="reg-dir-matricula"
+                className="mb-1 block text-sm font-medium text-stone-800"
+              >
+                Matrícula profesional
+              </label>
+              <input
+                id="reg-dir-matricula"
+                required
+                minLength={2}
+                value={form.director_matricula}
+                onChange={updateField("director_matricula")}
+                className={fieldClass}
+                placeholder="Ej.: MP 12345"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="reg-dir-esp"
+                className="mb-1 block text-sm font-medium text-stone-800"
+              >
+                Especialidad (opcional)
+              </label>
+              <input
+                id="reg-dir-esp"
+                value={form.director_especialidad}
+                onChange={updateField("director_especialidad")}
+                className={fieldClass}
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="reg-dir-email"
+                className="mb-1 block text-sm font-medium text-stone-800"
+              >
+                Email del director (opcional)
+              </label>
+              <input
+                id="reg-dir-email"
+                type="email"
+                value={form.director_email}
+                onChange={updateField("director_email")}
+                className={fieldClass}
+                placeholder="Si queda vacío, se usa el email de la clínica"
+              />
+            </div>
+          </div>
+        </div>
+
         {error ? (
           <p className="text-sm text-red-700" role="alert">
             {error}
@@ -232,7 +319,7 @@ export default function ClinicaRegistro() {
           disabled={submitting}
           className="inline-flex h-11 w-full items-center justify-center rounded-full bg-aguara-orange px-5 text-sm font-medium text-white transition hover:bg-aguara-orange-deep disabled:opacity-60"
         >
-          {submitting ? "Registrando…" : "Crear cuenta"}
+          {submitting ? "Registrando…" : "Solicitar alta"}
         </button>
       </form>
 

@@ -9,10 +9,11 @@ import {
   writeClinicSession,
 } from "@/lib/chapitas/clinicSession";
 import {
-  crearClinica,
+  crearClinicaConDirectorTecnico,
   obtenerClinica,
   obtenerClinicaPorEmail,
 } from "@/lib/chapitas/clinicas";
+import { clinicaEstaRechazada } from "@/lib/chapitas/clinicaRegistro";
 
 const ClinicAuthContext = createContext(null);
 
@@ -77,6 +78,11 @@ export function ClinicAuthProvider({ children }) {
         "No encontramos una clínica con ese email. Registrate primero.",
       );
     }
+    if (clinicaEstaRechazada(data)) {
+      throw new Error(
+        "Este perfil fue rechazado por Aguará. Contactanos si necesitás reintentar el alta.",
+      );
+    }
 
     writeClinicSession(data);
     setClinica(data);
@@ -94,14 +100,27 @@ export function ClinicAuthProvider({ children }) {
       throw new Error("Por ahora la contraseña debe ser el mismo email.");
     }
 
-    const data = await crearClinica({
-      nombre: payload.nombre,
-      email: emailNorm,
-      telefono: payload.telefono,
-      direccion: payload.direccion,
-      ciudad: payload.ciudad,
-      provincia: payload.provincia,
-      descripcion: payload.descripcion,
+    const matricula = String(payload.director_matricula || "").trim();
+    if (matricula.length < 2) {
+      throw new Error("Solo veterinarios matriculados pueden crear una cuenta. Ingresá la matrícula del director técnico.");
+    }
+
+    const data = await crearClinicaConDirectorTecnico({
+      clinica: {
+        nombre: payload.nombre,
+        email: emailNorm,
+        telefono: payload.telefono,
+        direccion: payload.direccion,
+        ciudad: payload.ciudad,
+        provincia: payload.provincia,
+        descripcion: payload.descripcion,
+      },
+      director: {
+        nombre: payload.director_nombre,
+        matricula,
+        especialidad: payload.director_especialidad,
+        email: payload.director_email || emailNorm,
+      },
     });
 
     writeClinicSession(data);

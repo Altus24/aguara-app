@@ -341,7 +341,7 @@ export default function TutorMascotaPerfil() {
     for (const d of perfil.desparasitaciones || []) {
       if (!enVentanaRecordatorio(d.proxima_fecha)) continue;
       rows.push({
-        id: `desp-${d.id}`,
+        id: `desp-prox-${d.id}`,
         tipo: "Desparasitación",
         title: d.producto,
         date: d.proxima_fecha,
@@ -351,7 +351,8 @@ export default function TutorMascotaPerfil() {
       });
     }
     for (const r of perfil.recordatorios || []) {
-      if (!enVentanaRecordatorio(r.fecha_proxima)) continue;
+      if (r.activo === false) continue;
+      const esMedicacion = r.tipo === "medicacion";
       const tipoLabel =
         r.tipo === "medicacion"
           ? "Medicación"
@@ -360,14 +361,30 @@ export default function TutorMascotaPerfil() {
             : r.tipo === "vacuna"
               ? "Vacuna"
               : "Recordatorio";
+      const horariosLabel = formatHorariosLabel(r.horarios);
       rows.push({
         id: `rec-${r.origen || "c"}-${r.id}`,
         tipo: tipoLabel,
         title: r.titulo,
         date: r.fecha_proxima || null,
-        diasLabel: etiquetaDiasVencimiento(diasHastaFecha(r.fecha_proxima)),
-        detail: r.detalle || null,
-        sort: r.fecha_proxima || "9999-12-31",
+        dateLabel: r.de_por_vida
+          ? "De por vida"
+          : r.fecha_proxima
+            ? null
+            : esMedicacion
+              ? "Sin fecha límite"
+              : null,
+        diasLabel: r.de_por_vida
+          ? null
+          : r.fecha_proxima
+            ? etiquetaDiasVencimiento(diasHastaFecha(r.fecha_proxima))
+            : null,
+        detail: [r.detalle, horariosLabel ? `Horarios: ${horariosLabel}` : null]
+          .filter(Boolean)
+          .join(" · ") || null,
+        sort: r.de_por_vida
+          ? "0000-00-00"
+          : r.fecha_proxima || "9999-12-31",
       });
     }
     if (perfil.proximaCita?.inicio) {
@@ -938,7 +955,9 @@ export default function TutorMascotaPerfil() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-aguara-ink">Recordatorios</h2>
-              <p className="text-sm text-stone-500">Vencimientos de los próximos 7 días</p>
+              <p className="text-sm text-stone-500">
+                Medicación y avisos de la clínica, más vencimientos de la próxima semana
+              </p>
             </div>
             <Link
               href={`/tutor?tab=agenda&sacar=1&mascota=${encodeURIComponent(chapitaId)}`}
@@ -948,7 +967,7 @@ export default function TutorMascotaPerfil() {
             </Link>
           </div>
           {recordatoriosPerfil.length === 0 ? (
-            <p className="mt-3 text-sm text-stone-500">Sin vencimientos en la próxima semana.</p>
+            <p className="mt-3 text-sm text-stone-500">Sin recordatorios cargados.</p>
           ) : (
             <ul className="mt-3 divide-y divide-stone-100">
               {recordatoriosPerfil.map((item) => (
@@ -1010,6 +1029,54 @@ export default function TutorMascotaPerfil() {
             setPerfil(next);
           }}
         />
+
+        <section className={cardClass}>
+          <h2 className="text-lg font-semibold text-aguara-ink">Desparasitaciones</h2>
+          {(perfil.desparasitaciones || []).length === 0 ? (
+            <p className="mt-2 text-sm text-stone-500">Sin desparasitaciones registradas.</p>
+          ) : (
+            <ul className="mt-3 divide-y divide-stone-100 text-sm">
+              {(perfil.desparasitaciones || []).map((d) => (
+                <li key={d.id} className="py-3">
+                  <p className="font-medium text-aguara-ink">{d.producto}</p>
+                  <p className="text-stone-600">
+                    Aplicada: {formatDate(d.fecha) || "—"}
+                    {d.proxima_fecha ? ` · Caduca: ${formatDate(d.proxima_fecha)}` : ""}
+                  </p>
+                  {d.notas ? <p className="mt-0.5 text-stone-500">{d.notas}</p> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className={cardClass}>
+          <h2 className="text-lg font-semibold text-aguara-ink">Estudios y archivos</h2>
+          {(perfil.archivos || []).length === 0 ? (
+            <p className="mt-2 text-sm text-stone-500">Sin archivos compartidos por la clínica.</p>
+          ) : (
+            <ul className="mt-3 divide-y divide-stone-100 text-sm">
+              {(perfil.archivos || []).map((a) => (
+                <li key={a.id} className="flex flex-wrap items-start justify-between gap-2 py-3">
+                  <div>
+                    <a
+                      href={a.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium text-aguara-orange hover:underline"
+                    >
+                      {a.nombre}
+                    </a>
+                    <p className="text-stone-500">
+                      {a.tipo || "archivo"}
+                      {a.creado_en ? ` · ${formatDateTime(a.creado_en)}` : ""}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
         <section className={cardClass}>
           <h2 className="text-lg font-semibold text-aguara-ink">Historial de consultas</h2>

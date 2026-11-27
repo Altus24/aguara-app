@@ -155,6 +155,7 @@ function NuevoClienteForm({ clinicaId, clinicaNombre, onCreated }) {
     telefono: "",
     telefono_secundario: "",
     direccion: "",
+    dni: "",
     notas: "",
   });
   const [mascotaModo, setMascotaModo] = useState("crear"); // ninguna | crear | asociar
@@ -319,6 +320,16 @@ function NuevoClienteForm({ clinicaId, clinicaNombre, onCreated }) {
             className={fieldClass}
             value={form.telefono_secundario}
             onChange={(e) => setForm((f) => ({ ...f, telefono_secundario: e.target.value }))}
+          />
+        </Field>
+        <Field label="DNI" id="cli-dni">
+          <input
+            id="cli-dni"
+            inputMode="numeric"
+            autoComplete="off"
+            className={fieldClass}
+            value={form.dni}
+            onChange={(e) => setForm((f) => ({ ...f, dni: e.target.value }))}
           />
         </Field>
         <Field label="Dirección" id="cli-dir" className="sm:col-span-2">
@@ -575,6 +586,7 @@ function FichaCliente({ clinicaId, clinicaNombre, clienteId, onBack }) {
     telefono: "",
     telefono_secundario: "",
     direccion: "",
+    dni: "",
     notas: "",
   });
   const [savingEdit, setSavingEdit] = useState(false);
@@ -610,6 +622,7 @@ function FichaCliente({ clinicaId, clinicaNombre, clienteId, onBack }) {
         telefono: c.telefono || "",
         telefono_secundario: c.telefono_secundario || "",
         direccion: c.direccion || "",
+        dni: c.dni || "",
         notas: c.notas || "",
       });
       const allConsultas = await Promise.all(
@@ -722,6 +735,7 @@ function FichaCliente({ clinicaId, clinicaNombre, clienteId, onBack }) {
               {cliente.telefono_secundario ? ` · ${cliente.telefono_secundario}` : ""}
             </p>
             {cliente.email ? <p className="text-sm text-stone-600">{cliente.email}</p> : null}
+            {cliente.dni ? <p className="text-sm text-stone-600">DNI: {cliente.dni}</p> : null}
             {cliente.direccion ? (
               <p className="mt-1 text-sm text-stone-500">{cliente.direccion}</p>
             ) : null}
@@ -796,6 +810,16 @@ function FichaCliente({ clinicaId, clinicaNombre, clienteId, onBack }) {
                   className={fieldClass}
                   value={form.telefono_secundario}
                   onChange={(e) => setForm((f) => ({ ...f, telefono_secundario: e.target.value }))}
+                />
+              </Field>
+              <Field label="DNI" id="edit-dni">
+                <input
+                  id="edit-dni"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  className={fieldClass}
+                  value={form.dni}
+                  onChange={(e) => setForm((f) => ({ ...f, dni: e.target.value }))}
                 />
               </Field>
               <Field label="Dirección" id="edit-dir" className="sm:col-span-2">

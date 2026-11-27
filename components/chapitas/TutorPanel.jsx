@@ -154,6 +154,7 @@ export default function TutorPanel() {
                   telefono: tutor.telefono || "",
                   telefono_secundario: tutor.telefono_secundario,
                   direccion: tutor.direccion,
+                  dni: tutor.dni,
                   clinica_preferida_id: tutor.clinica_preferida_id,
                   calle: tutor.calle,
                   numeracion: tutor.numeracion,

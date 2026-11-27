@@ -25,6 +25,7 @@ const emptyTutor = {
   telefono: "",
   telefonoSecundario: "",
   direccion: "",
+  dni: "",
 };
 
 export default function TutorRegistro() {
@@ -229,6 +230,20 @@ export default function TutorRegistro() {
                 className={fieldClass}
               />
             </div>
+          </div>
+          <div>
+            <label htmlFor="reg-tutor-dni" className="mb-1 block text-sm font-medium text-stone-800">
+              DNI (opcional)
+            </label>
+            <input
+              id="reg-tutor-dni"
+              inputMode="numeric"
+              autoComplete="off"
+              value={tutorForm.dni}
+              onChange={updateTutor("dni")}
+              className={fieldClass}
+              placeholder="Documento del tutor"
+            />
           </div>
           <div>
             <label

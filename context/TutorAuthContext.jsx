@@ -113,6 +113,7 @@ export function TutorAuthProvider({ children }) {
     const telefono = String(tutorFields?.telefono || "").trim();
     const telefonoSecundario = String(tutorFields?.telefonoSecundario || "").trim();
     const direccion = String(tutorFields?.direccion || "").trim();
+    const dni = String(tutorFields?.dni || "").trim();
 
     if (!emailNorm || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm)) {
       throw new Error("Ingresá un email válido.");
@@ -148,6 +149,7 @@ export function TutorAuthProvider({ children }) {
       telefono,
       telefonoSecundario: telefonoSecundario || null,
       direccion: direccion || null,
+      dni: dni || null,
     });
 
     try {

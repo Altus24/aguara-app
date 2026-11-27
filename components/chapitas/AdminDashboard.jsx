@@ -44,9 +44,15 @@ import { confirmAccion, confirmEliminar, confirmGuardar } from '@/lib/confirmAct
 import { useAuth } from '@/context/AuthContext';
 import {
   actualizarClinica,
+  aprobarClinica,
   crearClinica,
   eliminarClinica,
+  rechazarClinica,
 } from '@/lib/chapitas/clinicas';
+import {
+  CLINICA_ESTADO_PENDIENTE,
+  etiquetaEstadoRegistro,
+} from '@/lib/chapitas/clinicaRegistro';
 import {
   ciudadesDeProvincia,
   provinciaPorDefecto,
@@ -111,7 +117,9 @@ export default function AdminDashboard() {
         .maybeSingle(),
       supabase
         .from('clinicas')
-        .select('id, nombre, email, telefono, direccion, ciudad, provincia, creado_en')
+        .select(
+          'id, nombre, email, telefono, direccion, ciudad, provincia, creado_en, estado_registro, solicitado_en, aprobado_en, director_tecnico_id',
+        )
         .order('creado_en', { ascending: false }),
       supabase
         .from('tutores')
@@ -146,7 +154,20 @@ export default function AdminDashboard() {
     }
 
     if (clinicasRes.error) {
-      setClinicas([]);
+      if (/estado_registro|director_tecnico|schema cache|does not exist/i.test(clinicasRes.error.message || '')) {
+        const legacyClinicas = await supabase
+          .from('clinicas')
+          .select('id, nombre, email, telefono, direccion, ciudad, provincia, creado_en')
+          .order('creado_en', { ascending: false });
+        setClinicas(
+          (legacyClinicas.data || []).map((c) => ({
+            ...c,
+            estado_registro: 'aprobada',
+          })),
+        );
+      } else {
+        setClinicas([]);
+      }
     } else {
       setClinicas(clinicasRes.data || []);
     }
@@ -321,6 +342,38 @@ export default function AdminDashboard() {
       setMessage(err instanceof Error ? err.message : 'No se pudo guardar la clínica.');
     } finally {
       setSavingClinica(false);
+    }
+  }
+
+  async function handleAprobarClinica(clinica) {
+    if (!(await confirmGuardar(`la aprobación de “${clinica.nombre}”`))) return;
+    setMessage('');
+    setSuccessMessage('');
+    try {
+      const updated = await aprobarClinica(clinica.id);
+      setClinicas((prev) =>
+        prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
+      );
+      setSuccessMessage(`Clínica “${updated.nombre}” aprobada.`);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'No se pudo aprobar la clínica.');
+    }
+  }
+
+  async function handleRechazarClinica(clinica) {
+    if (!(await confirmEliminar(`la solicitud de “${clinica.nombre}” (rechazar alta)`))) {
+      return;
+    }
+    setMessage('');
+    setSuccessMessage('');
+    try {
+      const updated = await rechazarClinica(clinica.id);
+      setClinicas((prev) =>
+        prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
+      );
+      setSuccessMessage(`Clínica “${updated.nombre}” rechazada.`);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'No se pudo rechazar la clínica.');
     }
   }
 
@@ -824,12 +877,16 @@ export default function AdminDashboard() {
                       <th className="p-3">Email</th>
                       <th className="p-3">Teléfono</th>
                       <th className="p-3">Ubicación</th>
+                      <th className="p-3">Estado</th>
                       <th className="p-3">Alta</th>
                       <th className="p-3">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {clinicasFiltradas.map((c) => (
+                    {clinicasFiltradas.map((c) => {
+                      const estado = c.estado_registro || 'aprobada';
+                      const pendiente = estado === CLINICA_ESTADO_PENDIENTE;
+                      return (
                       <tr key={c.id} className="border-t">
                         <td className="p-3 font-medium">{c.nombre}</td>
                         <td className="p-3">{c.email}</td>
@@ -841,11 +898,42 @@ export default function AdminDashboard() {
                           ) : null}
                         </td>
                         <td className="p-3 whitespace-nowrap">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                              pendiente
+                                ? 'bg-amber-100 text-amber-900'
+                                : estado === 'rechazada'
+                                  ? 'bg-red-100 text-red-800'
+                                  : 'bg-emerald-100 text-emerald-800'
+                            }`}
+                          >
+                            {etiquetaEstadoRegistro(estado)}
+                          </span>
+                        </td>
+                        <td className="p-3 whitespace-nowrap">
                           {c.creado_en
                             ? formatDateTime(c.creado_en)
                             : '—'}
                         </td>
                         <td className="p-3 space-x-2 whitespace-nowrap">
+                          {pendiente ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleAprobarClinica(c)}
+                                className="text-emerald-700 underline"
+                              >
+                                Aprobar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRechazarClinica(c)}
+                                className="text-amber-700 underline"
+                              >
+                                Rechazar
+                              </button>
+                            </>
+                          ) : null}
                           <button
                             type="button"
                             onClick={() => openEditarClinica(c)}
@@ -862,10 +950,11 @@ export default function AdminDashboard() {
                           </button>
                         </td>
                       </tr>
-                    ))}
+                    );
+                    })}
                     {clinicasFiltradas.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="p-4 text-center text-gray-500">
+                        <td colSpan={7} className="p-4 text-center text-gray-500">
                           {clinicas.length === 0
                             ? 'Todavía no hay clínicas. Usá “Nueva clínica” para crear una.'
                             : 'Ninguna clínica coincide con la búsqueda.'}

@@ -19,6 +19,14 @@ import MascotaRegistroFields, {
 import MedicacionExtrasFields, {
   normalizeHorarios,
 } from "@/components/mascotas/MedicacionExtrasFields";
+import RecetaDocumento, { exportRecetaJpeg } from "@/components/clinica/RecetaDocumento";
+import {
+  emptyHcMedItem,
+  formatHcMedicacionDisplay,
+  formatHcMedicacionLines,
+  parseHcMedicacion,
+  serializeHcMedicacion,
+} from "@/lib/chapitas/hcMedicacion";
 import {
   actualizarConsulta,
   cerrarConsulta,
@@ -28,16 +36,20 @@ import {
   crearDesparasitacion,
   crearPaciente,
   crearVacuna,
+  listarArchivos,
   listarClientes,
   listarConsultas,
   listarPacientes,
   listarVeterinarios,
+  obtenerCliente,
   obtenerConsulta,
   obtenerPaciente,
 } from "@/lib/chapitas/clinicaOps";
+import { obtenerClinica } from "@/lib/chapitas/clinicas";
 import { crearTratamiento } from "@/lib/chapitas/mascotaPerfil";
 import { proximaFechaDesdeAplicacion, vacunasParaEspecie } from "@/lib/chapitas/vacunas";
 import { confirmGuardar } from "@/lib/confirmAction";
+import { formatDate } from "@/lib/dateFormat";
 
 export default function HistoriasSection({ clinicaId }) {
   const [consultas, setConsultas] = useState([]);
@@ -183,10 +195,12 @@ function etiquetaMascota(p) {
   return `${p.nombre || "Mascota"}${especie}${raza}`;
 }
 
+const EMPTY_LIST = [];
+
 export function ConsultaForm({
   clinicaId,
-  pacientes,
-  clientes = [],
+  pacientes = EMPTY_LIST,
+  clientes = EMPTY_LIST,
   vets,
   onSaved,
   onCancel,
@@ -199,8 +213,8 @@ export function ConsultaForm({
   const [clienteId, setClienteId] = useState(
     initial?.cliente_id || pacienteInicial?.cliente_id || "",
   );
-  const [pacientesLocal, setPacientesLocal] = useState(pacientes || []);
-  const [clientesLocal, setClientesLocal] = useState(clientes || []);
+  const [pacientesLocal, setPacientesLocal] = useState(pacientes);
+  const [clientesLocal, setClientesLocal] = useState(clientes);
   const [form, setForm] = useState({
     paciente_id: initial?.paciente_id || "",
     veterinario_id: initial?.veterinario_id || "",
@@ -209,16 +223,12 @@ export function ConsultaForm({
     examen_fisico: initial?.examen_fisico || "",
     diagnostico: initial?.diagnostico || "",
     tratamiento: initial?.tratamiento || "",
-    medicacion: initial?.medicacion || "",
     peso: initial?.peso ?? "",
     temperatura: initial?.temperatura ?? "",
     observaciones: initial?.observaciones || "",
+    incluir_diagnostico_receta: Boolean(initial?.incluir_diagnostico_receta),
   });
-  const [medExtras, setMedExtras] = useState({
-    horarios: [""],
-    de_por_vida: false,
-    fecha_fin: "",
-  });
+  const [medItems, setMedItems] = useState(() => parseHcMedicacion(initial?.medicacion));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showNuevoCliente, setShowNuevoCliente] = useState(false);
@@ -234,11 +244,11 @@ export function ConsultaForm({
   }, [clinicaId]);
 
   useEffect(() => {
-    setPacientesLocal(pacientes || []);
+    setPacientesLocal(pacientes);
   }, [pacientes]);
 
   useEffect(() => {
-    setClientesLocal(clientes || []);
+    setClientesLocal(clientes);
   }, [clientes]);
 
   const clientesOpts = useMemo(() => {
@@ -360,16 +370,11 @@ export function ConsultaForm({
     setError("");
     try {
       const paciente = pacientesLocal.find((p) => p.id === form.paciente_id);
-      let medicacionTexto = String(form.medicacion || "").trim();
-      if (medicacionTexto) {
-        const horas = normalizeHorarios(medExtras.horarios);
-        if (horas.length) medicacionTexto += `\nHorarios: ${horas.join(" · ")}`;
-        if (medExtras.de_por_vida) medicacionTexto += "\nDe por vida";
-        else if (medExtras.fecha_fin) medicacionTexto += `\nHasta: ${medExtras.fecha_fin}`;
-      }
+      const medicacionTexto = serializeHcMedicacion(medItems);
       const payload = {
         ...form,
         medicacion: medicacionTexto,
+        incluir_diagnostico_receta: Boolean(form.incluir_diagnostico_receta),
         cliente_id: paciente?.cliente_id || clienteId || null,
       };
       if (initial?.id) {
@@ -389,26 +394,34 @@ export function ConsultaForm({
                 : Number(payload.temperatura),
             observaciones: payload.observaciones?.trim() || null,
             veterinario_id: payload.veterinario_id || null,
+            incluir_diagnostico_receta: Boolean(payload.incluir_diagnostico_receta),
           },
           { clinicaId },
         );
       } else {
         await crearConsulta(clinicaId, payload);
-        // También deja la medicación en la ficha (tratamiento activo).
-        const tituloMed = String(form.medicacion || "").trim().split("\n")[0];
-        if (tituloMed && form.paciente_id) {
-          try {
-            await crearTratamiento(clinicaId, {
-              paciente_id: form.paciente_id,
-              titulo: tituloMed,
-              detalle: null,
-              fecha_inicio: new Date().toISOString().slice(0, 10),
-              fecha_fin: medExtras.de_por_vida ? null : medExtras.fecha_fin || null,
-              de_por_vida: medExtras.de_por_vida,
-              horarios: normalizeHorarios(medExtras.horarios),
-            });
-          } catch {
-            // La HC ya se guardó; la ficha puede completarse después.
+        // También deja cada medicamento en la ficha (tratamiento activo).
+        const itemsOk = parseHcMedicacion(medicacionTexto).filter((i) => i.medicamento);
+        if (itemsOk.length && form.paciente_id) {
+          const hoy = new Date().toISOString().slice(0, 10);
+          for (const item of itemsOk) {
+            try {
+              const detalleParts = [];
+              if (item.dosis) detalleParts.push(`Dosis: ${item.dosis}`);
+              if (item.tiempo) detalleParts.push(`Tiempo: ${item.tiempo}`);
+              if (item.indicaciones) detalleParts.push(`Indicaciones: ${item.indicaciones}`);
+              await crearTratamiento(clinicaId, {
+                paciente_id: form.paciente_id,
+                titulo: item.medicamento,
+                detalle: detalleParts.length ? detalleParts.join(" · ") : null,
+                fecha_inicio: hoy,
+                fecha_fin: null,
+                de_por_vida: false,
+                horarios: [],
+              });
+            } catch {
+              // La HC ya se guardó; la ficha puede completarse después.
+            }
           }
         }
       }
@@ -612,6 +625,17 @@ export function ConsultaForm({
             value={form.diagnostico}
             onChange={(e) => setForm((f) => ({ ...f, diagnostico: e.target.value }))}
           />
+          <label className="mt-2 flex items-start gap-2 text-sm text-stone-700">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={Boolean(form.incluir_diagnostico_receta)}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, incluir_diagnostico_receta: e.target.checked }))
+              }
+            />
+            <span>Incluir diagnóstico en la receta</span>
+          </label>
         </Field>
         <Field label="Tratamiento" id="hc-tx">
           <textarea
@@ -622,34 +646,100 @@ export function ConsultaForm({
             onChange={(e) => setForm((f) => ({ ...f, tratamiento: e.target.value }))}
           />
         </Field>
-        <Field label="Medicación" id="hc-med" className="sm:col-span-2">
-          <textarea
-            id="hc-med"
-            rows={2}
-            className={fieldClass}
-            value={form.medicacion}
-            onChange={(e) => setForm((f) => ({ ...f, medicacion: e.target.value }))}
-            placeholder="Nombre del medicamento / indicaciones"
-          />
-          <div className="mt-2">
-            <MedicacionExtrasFields
-              fieldClass={fieldClass}
-              horarios={medExtras.horarios}
-              onHorariosChange={(horarios) => setMedExtras((v) => ({ ...v, horarios }))}
-              dePorVida={medExtras.de_por_vida}
-              onDePorVidaChange={(de_por_vida) =>
-                setMedExtras((v) => ({
-                  ...v,
-                  de_por_vida,
-                  fecha_fin: de_por_vida ? "" : v.fecha_fin,
-                }))
-              }
-              fechaFin={medExtras.fecha_fin}
-              onFechaFinChange={(fecha_fin) => setMedExtras((v) => ({ ...v, fecha_fin }))}
-              fechaFinLabel="Hasta"
-            />
+        <div className="sm:col-span-2 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-medium text-stone-800">Medicación</p>
+            <button
+              type="button"
+              className={secondaryBtnClass}
+              onClick={() => setMedItems((rows) => [...rows, emptyHcMedItem()])}
+            >
+              + Medicamento
+            </button>
           </div>
-        </Field>
+          <div className="space-y-3">
+            {medItems.map((item, index) => (
+              <div
+                key={`med-${index}`}
+                className="rounded-xl border border-stone-200 bg-stone-50/70 p-3 space-y-2"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-stone-500">Medicamento {index + 1}</p>
+                  <button
+                    type="button"
+                    className="text-xs text-stone-500 underline disabled:opacity-40"
+                    disabled={medItems.length <= 1}
+                    onClick={() =>
+                      setMedItems((rows) =>
+                        rows.length <= 1 ? [emptyHcMedItem()] : rows.filter((_, i) => i !== index),
+                      )
+                    }
+                  >
+                    Quitar
+                  </button>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Field label="Medicamento" id={`hc-med-nombre-${index}`}>
+                    <input
+                      id={`hc-med-nombre-${index}`}
+                      className={fieldClass}
+                      value={item.medicamento}
+                      onChange={(e) =>
+                        setMedItems((rows) =>
+                          rows.map((r, i) =>
+                            i === index ? { ...r, medicamento: e.target.value } : r,
+                          ),
+                        )
+                      }
+                      placeholder="Ej. Prednisolona 20 mg"
+                    />
+                  </Field>
+                  <Field label="Dosis" id={`hc-med-dosis-${index}`}>
+                    <input
+                      id={`hc-med-dosis-${index}`}
+                      className={fieldClass}
+                      value={item.dosis}
+                      onChange={(e) =>
+                        setMedItems((rows) =>
+                          rows.map((r, i) => (i === index ? { ...r, dosis: e.target.value } : r)),
+                        )
+                      }
+                      placeholder="Ej. 1 comprimido"
+                    />
+                  </Field>
+                  <Field label="Tiempo (duración y frecuencia)" id={`hc-med-tiempo-${index}`}>
+                    <input
+                      id={`hc-med-tiempo-${index}`}
+                      className={fieldClass}
+                      value={item.tiempo}
+                      onChange={(e) =>
+                        setMedItems((rows) =>
+                          rows.map((r, i) => (i === index ? { ...r, tiempo: e.target.value } : r)),
+                        )
+                      }
+                      placeholder="Ej. 1 vez al día por 10 días"
+                    />
+                  </Field>
+                  <Field label="Indicaciones" id={`hc-med-ind-${index}`}>
+                    <input
+                      id={`hc-med-ind-${index}`}
+                      className={fieldClass}
+                      value={item.indicaciones}
+                      onChange={(e) =>
+                        setMedItems((rows) =>
+                          rows.map((r, i) =>
+                            i === index ? { ...r, indicaciones: e.target.value } : r,
+                          ),
+                        )
+                      }
+                      placeholder="Ej. con comida"
+                    />
+                  </Field>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
         <Field label="Peso (kg)" id="hc-peso">
           <input
             id="hc-peso"
@@ -731,7 +821,46 @@ export function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged
     de_por_vida: false,
     horarios: [""],
   });
+  const [archivosConsulta, setArchivosConsulta] = useState([]);
+  const [recetaOpen, setRecetaOpen] = useState(false);
+  /** "" | "abrir" | "guardar" | "descargar" */
+  const [recetaBusy, setRecetaBusy] = useState("");
+  const [recetaError, setRecetaError] = useState("");
+  const [recetaClinica, setRecetaClinica] = useState(null);
+  const [recetaCliente, setRecetaCliente] = useState(null);
   const archivoInputRef = useRef(null);
+  const recetaRef = useRef(null);
+
+  function nombreArchivoReceta() {
+    const mascotaNombre = (paciente?.nombre || consulta?.clinica_pacientes?.nombre || "paciente")
+      .replace(/[^\w\-áéíóúñÁÉÍÓÚÑ ]+/gi, "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .slice(0, 40);
+    return `receta-${mascotaNombre || "paciente"}-${formatDate(new Date()).replace(/\//g, "-")}.jpg`;
+  }
+
+  function descargarBlobLocal(blob, filename) {
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(objectUrl);
+  }
+
+  async function loadArchivosConsulta(pacienteId, consultaKey) {
+    if (!pacienteId || !consultaKey) {
+      setArchivosConsulta([]);
+      return;
+    }
+    try {
+      const rows = await listarArchivos(pacienteId);
+      setArchivosConsulta((rows || []).filter((a) => a.consulta_id === consultaKey));
+    } catch {
+      setArchivosConsulta([]);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -753,13 +882,73 @@ export function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged
           nombre: f.nombre && catalogo.includes(f.nombre) ? f.nombre : catalogo[0] || "",
           fecha: f.fecha || new Date().toISOString().slice(0, 10),
         }));
+        await loadArchivosConsulta(pac.id, c.id);
       } else {
         setPaciente(null);
+        setArchivosConsulta([]);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar la consulta.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function abrirReceta() {
+    setRecetaError("");
+    if (!formatHcMedicacionLines(consulta.medicacion).length) {
+      setRecetaError("La historia no tiene medicación para armar la receta.");
+      return;
+    }
+    setRecetaBusy("abrir");
+    try {
+      const clienteId = consulta.cliente_id || paciente?.cliente_id || null;
+      const [clinicaData, clienteData] = await Promise.all([
+        obtenerClinica(clinicaId),
+        clienteId ? obtenerCliente(clienteId) : Promise.resolve(null),
+      ]);
+      setRecetaClinica(clinicaData);
+      setRecetaCliente(clienteData);
+      setRecetaOpen(true);
+    } catch (err) {
+      setRecetaError(err instanceof Error ? err.message : "No se pudo preparar la receta.");
+    } finally {
+      setRecetaBusy("");
+    }
+  }
+
+  async function descargarRecetaJpeg() {
+    setRecetaBusy("descargar");
+    setRecetaError("");
+    try {
+      const file = await exportRecetaJpeg(recetaRef.current, nombreArchivoReceta());
+      descargarBlobLocal(file, file.name);
+    } catch (err) {
+      setRecetaError(err instanceof Error ? err.message : "No se pudo descargar la receta.");
+    } finally {
+      setRecetaBusy("");
+    }
+  }
+
+  async function guardarRecetaJpeg() {
+    if (!(await confirmGuardar("la receta"))) return;
+    setRecetaBusy("guardar");
+    setRecetaError("");
+    try {
+      const file = await exportRecetaJpeg(recetaRef.current, nombreArchivoReceta());
+      await crearArchivosDesdeFiles(clinicaId, {
+        paciente_id: paciente.id,
+        consulta_id: consulta.id,
+        tipo: "receta",
+        files: [file],
+      });
+      await loadArchivosConsulta(paciente.id, consulta.id);
+      setRecetaOpen(false);
+      setFichaMsg("Receta guardada al final de la historia clínica.");
+    } catch (err) {
+      setRecetaError(err instanceof Error ? err.message : "No se pudo guardar la receta.");
+    } finally {
+      setRecetaBusy("");
     }
   }
 
@@ -903,9 +1092,23 @@ export function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged
           />
           <Item label="Anamnesis" value={consulta.anamnesis} wide />
           <Item label="Examen físico" value={consulta.examen_fisico} wide />
-          <Item label="Diagnóstico" value={consulta.diagnostico} wide />
+          <Item
+            label="Diagnóstico"
+            value={
+              consulta.diagnostico
+                ? `${consulta.diagnostico}${
+                    consulta.incluir_diagnostico_receta ? " · (incluido en receta)" : ""
+                  }`
+                : null
+            }
+            wide
+          />
           <Item label="Tratamiento" value={consulta.tratamiento} />
-          <Item label="Medicación" value={consulta.medicacion} />
+          <Item
+            label="Medicación"
+            value={formatHcMedicacionDisplay(consulta.medicacion) || null}
+            wide
+          />
           <Item label="Peso" value={consulta.peso != null ? `${consulta.peso} kg` : null} />
           <Item
             label="Temperatura"
@@ -1118,6 +1321,7 @@ export function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged
                       });
                       setArchivoForm({ tipo: "estudio", files: [] });
                       if (archivoInputRef.current) archivoInputRef.current.value = "";
+                      await loadArchivosConsulta(paciente.id, consulta.id);
                       setFichaMsg(
                         files.length === 1
                           ? "Archivo cargado en la ficha del paciente."
@@ -1143,6 +1347,7 @@ export function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged
                     <option value="estudio">Estudio</option>
                     <option value="foto">Foto</option>
                     <option value="lab">Laboratorio</option>
+                    <option value="receta">Receta</option>
                     <option value="otro">Otro</option>
                   </select>
                   <label className="block text-xs text-stone-500">
@@ -1274,7 +1479,7 @@ export function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged
           </div>
         ) : null}
         {consulta.cerrada ? (
-          <div className="mt-4 rounded-xl bg-emerald-50 px-3 py-3 text-sm text-emerald-900">
+          <div className="mt-4 space-y-3 rounded-xl bg-emerald-50 px-3 py-3 text-sm text-emerald-900">
             <p>
               Consulta cerrada · Firmado por {consulta.firmado_por || "—"} ·{" "}
               {formatDateTime(consulta.cerrado_en)}
@@ -1284,8 +1489,30 @@ export function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged
               <img
                 src={consulta.firma_imagen}
                 alt="Firma digital"
-                className="mt-3 h-16 w-40 rounded border border-emerald-200 bg-white object-contain"
+                className="mt-1 h-16 w-40 rounded border border-emerald-200 bg-white object-contain"
               />
+            ) : null}
+            {consulta.clinica_id === clinicaId && paciente ? (
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  className={primaryBtnClass}
+                  disabled={Boolean(recetaBusy)}
+                  onClick={abrirReceta}
+                >
+                  {recetaBusy === "abrir" ? "Preparando…" : "Crear receta"}
+                </button>
+                {!formatHcMedicacionLines(consulta.medicacion).length ? (
+                  <p className="text-xs text-amber-800">
+                    Agregá medicación en la historia para poder generar la receta.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            {recetaError && !recetaOpen ? (
+              <p className="text-sm text-red-700" role="alert">
+                {recetaError}
+              </p>
             ) : null}
           </div>
         ) : consulta.clinica_id === clinicaId ? (
@@ -1357,7 +1584,95 @@ export function DetalleConsulta({ clinicaId, consultaId, vets, onBack, onChanged
             ) : null}
           </div>
         ) : null}
+
+        {archivosConsulta.length ? (
+          <div className="mt-5 space-y-2 border-t border-stone-100 pt-4">
+            <p className="text-sm font-medium text-aguara-ink">Archivos de esta historia</p>
+            <ul className="space-y-1.5 text-sm">
+              {archivosConsulta.map((a) => (
+                <li key={a.id} className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600">
+                    {a.tipo || "archivo"}
+                  </span>
+                  <a
+                    href={a.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium text-aguara-orange hover:underline"
+                  >
+                    {a.nombre}
+                  </a>
+                  <span className="text-xs text-stone-400">{formatDateTime(a.creado_en)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
+
+      {recetaOpen ? (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-stone-900/50 p-4 sm:p-8">
+          <div className="w-full max-w-4xl rounded-2xl bg-white shadow-xl">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-100 px-4 py-3 sm:px-5">
+              <div>
+                <p className="text-sm font-medium text-aguara-orange">Vista previa</p>
+                <h3 className="text-lg font-semibold text-aguara-ink">Receta</h3>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={secondaryBtnClass}
+                  disabled={Boolean(recetaBusy)}
+                  onClick={() => {
+                    setRecetaOpen(false);
+                    setRecetaError("");
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className={secondaryBtnClass}
+                  disabled={Boolean(recetaBusy)}
+                  onClick={descargarRecetaJpeg}
+                >
+                  {recetaBusy === "descargar" ? "Descargando…" : "Descargar"}
+                </button>
+                <button
+                  type="button"
+                  className={primaryBtnClass}
+                  disabled={Boolean(recetaBusy)}
+                  onClick={guardarRecetaJpeg}
+                >
+                  {recetaBusy === "guardar" ? "Guardando…" : "Guardar receta JPEG"}
+                </button>
+              </div>
+            </div>
+            {recetaError ? (
+              <p className="px-4 pt-3 text-sm text-red-700 sm:px-5" role="alert">
+                {recetaError}
+              </p>
+            ) : null}
+            <div className="overflow-x-auto bg-stone-100 p-4 sm:p-6">
+              <div className="mx-auto w-fit shadow-md">
+                <RecetaDocumento
+                  ref={recetaRef}
+                  clinica={recetaClinica}
+                  paciente={paciente}
+                  cliente={recetaCliente}
+                  medicacion={consulta.medicacion}
+                  diagnostico={
+                    consulta.incluir_diagnostico_receta ? consulta.diagnostico : ""
+                  }
+                  firmaImagen={consulta.firma_imagen}
+                  firmadoPor={consulta.firmado_por}
+                  fechaHoy={formatDate(new Date())}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1366,7 +1681,7 @@ function Item({ label, value, wide }) {
   return (
     <div className={wide ? "sm:col-span-2" : undefined}>
       <dt className="text-stone-500">{label}</dt>
-      <dd className="mt-0.5 text-aguara-ink">{value || "—"}</dd>
+      <dd className="mt-0.5 whitespace-pre-line text-aguara-ink">{value || "—"}</dd>
     </div>
   );
 }

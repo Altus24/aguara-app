@@ -50,9 +50,11 @@ import {
   listarServiciosGenerales,
   subirLogoClinica,
 } from "@/lib/chapitas/clinicas";
+import RecetaConfigPanel from "@/components/clinica/RecetaConfigPanel";
 
 const SUBTABS = [
   { id: "ubicacion", label: "Perfil" },
+  { id: "receta", label: "Receta" },
   { id: "horarios", label: "Horario" },
   { id: "vets", label: "Veterinarios" },
   { id: "servicios", label: "Servicios" },
@@ -107,6 +109,7 @@ export default function ConfigSection({ clinica, onSaved }) {
         ))}
       </div>
       {tab === "ubicacion" ? <Ubicacion clinica={clinica} onSaved={onSaved} /> : null}
+      {tab === "receta" ? <RecetaConfigPanel clinica={clinica} onSaved={onSaved} /> : null}
       {tab === "vets" ? <Veterinarios clinicaId={clinica.id} /> : null}
       {tab === "servicios" ? <Servicios clinicaId={clinica.id} /> : null}
       {tab === "horarios" ? <Horarios clinicaId={clinica.id} /> : null}
@@ -556,12 +559,16 @@ function Veterinarios({ clinicaId }) {
               />
             </Field>
           </div>
-          <Field label="Firma digital" id="vet-firma">
+          <Field label="Firma digital (dibujar o subir imagen)" id="vet-firma">
             <SignaturePad
               key={firmaKey}
               value={form.firma_digital}
               onChange={(dataUrl) => setForm((f) => ({ ...f, firma_digital: dataUrl }))}
             />
+            <p className="mt-1 text-xs text-stone-500">
+              Podés firmar en pantalla o subir una foto/escaneo de la firma (JPG, PNG o WebP, máx. 2
+              MB). Se usa al cerrar historias clínicas.
+            </p>
           </Field>
           {error ? <p className="text-sm text-red-700">{error}</p> : null}
           {message ? <p className="text-sm text-emerald-700">{message}</p> : null}

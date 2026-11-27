@@ -36,6 +36,7 @@ const LABELS = {
   nombre_completo: "Nombre",
   telefono: "Teléfono",
   telefono_secundario: "Tel. secundario",
+  dni: "DNI",
   direccion: "Dirección",
   calle: "Calle",
   numeracion: "Numeración",
@@ -415,6 +416,16 @@ export default function PerfilSection({ tutor, onSolicitudesChange }) {
               className={fieldClass}
               value={form.telefono_secundario}
               onChange={(e) => setForm((f) => ({ ...f, telefono_secundario: e.target.value }))}
+            />
+          </Field>
+          <Field label="DNI" id="tu-dni">
+            <input
+              id="tu-dni"
+              inputMode="numeric"
+              autoComplete="off"
+              className={fieldClass}
+              value={form.dni}
+              onChange={(e) => setForm((f) => ({ ...f, dni: e.target.value }))}
             />
           </Field>
         </div>

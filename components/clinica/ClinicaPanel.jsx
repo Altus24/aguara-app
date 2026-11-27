@@ -19,6 +19,12 @@ import {
   listarNotificacionesClinica,
   marcarTodasNotificacionesLeidas,
 } from "@/lib/chapitas/clinicaOps";
+import {
+  PLAZO_APROBACION_DIAS,
+  clinicaEstaAprobada,
+  clinicaEstaPendiente,
+  clinicaEstaRechazada,
+} from "@/lib/chapitas/clinicaRegistro";
 
 const NAV = [
   { id: "dashboard", label: "Dashboard" },
@@ -108,6 +114,59 @@ export default function ClinicaPanel() {
     return (
       <section className="mx-auto max-w-6xl px-4 py-16 text-center text-sm text-stone-500">
         Cargando…
+      </section>
+    );
+  }
+
+  if (!clinicaEstaAprobada(clinica)) {
+    const pendiente = clinicaEstaPendiente(clinica);
+    const rechazada = clinicaEstaRechazada(clinica);
+    return (
+      <section className="mx-auto w-full max-w-lg px-4 py-12">
+        <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+          <p className="text-sm font-medium text-aguara-orange">Aguará · Clínicas</p>
+          <h1 className="mt-2 text-2xl font-semibold text-aguara-ink">{clinica.nombre}</h1>
+          <p className="mt-1 text-sm text-stone-600">{clinica.email}</p>
+
+          {pendiente ? (
+            <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              <p className="font-semibold">Perfil pendiente de aprobación</p>
+              <p className="mt-1 leading-6">
+                Aguará App revisará tu perfil en los siguientes {PLAZO_APROBACION_DIAS} días.
+                Solo veterinarios matriculados pueden operar; tu director técnico ya quedó
+                asociado a la solicitud.
+              </p>
+              <p className="mt-2 leading-6">
+                Te avisamos cuando esté aprobado. Hasta entonces el panel permanece bloqueado.
+              </p>
+            </div>
+          ) : null}
+
+          {rechazada ? (
+            <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              <p className="font-semibold">Perfil rechazado</p>
+              <p className="mt-1 leading-6">
+                Esta solicitud no fue aprobada. Si creés que es un error, contactá a Aguará.
+              </p>
+            </div>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={() => {
+              signOut();
+              router.replace("/clinica/login");
+            }}
+            className="mt-6 inline-flex h-10 items-center justify-center rounded-full border border-stone-300 bg-white px-4 text-sm font-medium text-stone-700 hover:border-stone-400"
+          >
+            Cerrar sesión
+          </button>
+        </div>
+        <p className="mt-6 text-center">
+          <Link href="/" className="text-sm text-stone-500 underline hover:text-aguara-ink">
+            Volver al inicio
+          </Link>
+        </p>
       </section>
     );
   }
