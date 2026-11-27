@@ -434,7 +434,7 @@ function NuevoPacienteForm({ clinicaId, clientes, onCreated, onClientCreated }) 
   );
 }
 
-function FichaPaciente({ clinicaId, pacienteId, onBack }) {
+export function FichaPaciente({ clinicaId, pacienteId, onBack }) {
   const [paciente, setPaciente] = useState(null);
   const [consultas, setConsultas] = useState([]);
   const [vacunas, setVacunas] = useState([]);
@@ -720,7 +720,7 @@ function FichaPaciente({ clinicaId, pacienteId, onBack }) {
       <div>
         <h3 className="text-base font-semibold text-aguara-ink">Cargar en la ficha</h3>
         <p className="mt-1 text-sm text-stone-500">
-          Revisá colocaciones previas o agregá una nueva.
+          Se muestra el último registro. Abrí cada sección solo para agregar uno nuevo.
         </p>
         {fichaMsg ? <p className="mt-2 text-sm text-emerald-700">{fichaMsg}</p> : null}
         {fichaErr ? <p className="mt-2 text-sm text-red-700">{fichaErr}</p> : null}
@@ -1237,77 +1237,78 @@ function FichaColocacionCard({
   form,
   emptyLabel,
 }) {
+  const [agregando, setAgregando] = useState(false);
+  const itemsLenRef = useRef(items.length);
+
+  // Tras guardar un ítem nuevo, cerrar el formulario.
+  useEffect(() => {
+    if (agregando && items.length > itemsLenRef.current) {
+      setAgregando(false);
+      if (items[0]?.id) onSelect(String(items[0].id));
+    }
+    itemsLenRef.current = items.length;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length]);
+
+  const ultimo = items[0] || null;
   const selectedItem =
-    selected !== FICHA_NUEVO
-      ? items.find((item) => String(item.id) === String(selected)) || null
-      : null;
-  const mostrandoNuevo = selected === FICHA_NUEVO || items.length === 0;
+    selected && selected !== FICHA_NUEVO
+      ? items.find((item) => String(item.id) === String(selected)) || ultimo
+      : ultimo;
 
   return (
     <div className={`${cardClass} space-y-3`}>
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="font-semibold text-aguara-ink">{title}</h3>
-        {items.length > 0 ? (
-          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
-            {items.length} previa{items.length === 1 ? "" : "s"}
-          </span>
-        ) : null}
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-aguara-ink">{title}</h3>
+          {items.length > 0 ? (
+            <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600">
+              {items.length}
+            </span>
+          ) : null}
+        </div>
+        {agregando ? (
+          <button
+            type="button"
+            className={secondaryBtnClass}
+            onClick={() => {
+              setAgregando(false);
+              if (ultimo?.id) onSelect(String(ultimo.id));
+            }}
+          >
+            Cerrar
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={secondaryBtnClass}
+            onClick={() => {
+              setAgregando(true);
+              onSelect(FICHA_NUEVO);
+            }}
+          >
+            Agregar
+          </button>
+        )}
       </div>
 
-      {items.length === 0 ? (
-        <p className="text-sm text-stone-500">{emptyLabel}</p>
-      ) : items.length === 1 ? (
-        <div className="space-y-2">
-          {!mostrandoNuevo ? (
-            <div className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2">
-              {renderDetalle(items[0])}
-            </div>
-          ) : null}
-          <div className="flex flex-wrap gap-2">
-            {mostrandoNuevo ? (
-              <button
-                type="button"
-                className={secondaryBtnClass}
-                onClick={() => onSelect(String(items[0].id))}
-              >
-                Ver previa
-              </button>
-            ) : (
-              <button
-                type="button"
-                className={secondaryBtnClass}
-                onClick={() => onSelect(FICHA_NUEVO)}
-              >
-                Agregar nueva
-              </button>
-            )}
+      {!agregando ? (
+        ultimo ? (
+          <div className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2">
+            <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-stone-400">
+              Último
+            </p>
+            {renderDetalle(selectedItem || ultimo)}
           </div>
-        </div>
+        ) : (
+          <p className="text-sm text-stone-500">{emptyLabel}</p>
+        )
       ) : (
-        <label className="block text-xs text-stone-500">
-          Colocaciones previas
-          <select
-            className={`${fieldClass} mt-1`}
-            value={selected}
-            onChange={(e) => onSelect(e.target.value)}
-          >
-            {items.map((item) => (
-              <option key={item.id} value={String(item.id)}>
-                {optionLabel(item)}
-              </option>
-            ))}
-            <option value={FICHA_NUEVO}>＋ Agregar nueva…</option>
-          </select>
-        </label>
-      )}
-
-      {items.length > 1 && selectedItem ? (
-        <div className="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2">
-          {renderDetalle(selectedItem)}
+        <div className="space-y-2 border-t border-stone-100 pt-3">
+          <p className="text-sm font-medium text-aguara-ink">Nuevo</p>
+          {form}
         </div>
-      ) : null}
-
-      {mostrandoNuevo ? form : null}
+      )}
     </div>
   );
 }

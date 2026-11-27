@@ -166,7 +166,9 @@ export default function TutorMascotaPerfil() {
     let cancelled = false;
     listarClinicas()
       .then((rows) => {
-        if (!cancelled) setClinicas(rows || []);
+        if (cancelled) return;
+        const list = (rows || []).filter((c) => c?.id && String(c.nombre || "").trim());
+        setClinicas(list);
       })
       .catch(() => {
         if (!cancelled) setClinicas([]);
@@ -175,6 +177,13 @@ export default function TutorMascotaPerfil() {
       cancelled = true;
     };
   }, []);
+
+  // Si la cabecera guardada apunta a una clínica borrada, no la dejamos seleccionada.
+  useEffect(() => {
+    if (!clinicas.length || !clinicaCabeceraId) return;
+    if (clinicas.some((c) => String(c.id) === String(clinicaCabeceraId))) return;
+    setClinicaCabeceraId("");
+  }, [clinicas, clinicaCabeceraId]);
 
   async function handleSaveBasics(event) {
     event.preventDefault();

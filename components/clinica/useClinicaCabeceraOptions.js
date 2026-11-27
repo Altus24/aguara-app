@@ -2,67 +2,52 @@
 
 import { useEffect, useState } from "react";
 
-import { obtenerClinica } from "@/lib/chapitas/clinicas";
+import { listarClinicas } from "@/lib/chapitas/tutorPortal";
+
+function normalizarOpciones(rows) {
+  return (rows || [])
+    .filter((c) => c?.id && String(c.nombre || "").trim())
+    .map((c) => ({
+      id: c.id,
+      nombre: String(c.nombre).trim(),
+      ciudad: c.ciudad || "",
+    }));
+}
 
 /**
  * Opciones de “clínica de cabecera” al dar de alta desde el panel de una clínica.
- * Solo incluye la clínica actual (fresca desde DB) y fuerza el id por defecto.
+ * Solo clínicas que existen en DB (listarClinicas). La actual va primero si sigue existiendo.
+ * Nunca inventa opciones desde sesión / nombres en caché.
  */
-export default function useClinicaCabeceraOptions(
-  clinicaId,
-  { nombreFallback = "Esta clínica", ciudadFallback = "" } = {},
-) {
-  const [clinicas, setClinicas] = useState(() =>
-    clinicaId
-      ? [{ id: clinicaId, nombre: nombreFallback, ciudad: ciudadFallback }]
-      : [],
-  );
+export default function useClinicaCabeceraOptions(clinicaId) {
+  const [clinicas, setClinicas] = useState([]);
 
   useEffect(() => {
-    if (!clinicaId) {
-      setClinicas([]);
-      return;
-    }
-
-    // Placeholder inmediato con el id correcto (evita IDs huérfanos en el select).
-    setClinicas([
-      { id: clinicaId, nombre: nombreFallback || "Esta clínica", ciudad: ciudadFallback || "" },
-    ]);
-
     let cancelled = false;
+
     (async () => {
       try {
-        const fresh = await obtenerClinica(clinicaId);
+        const rows = normalizarOpciones(await listarClinicas());
         if (cancelled) return;
-        if (!fresh?.id) {
-          // La clínica ya no existe en DB: no ofrecer opciones fantasma.
-          setClinicas([]);
+
+        if (!clinicaId) {
+          setClinicas(rows);
           return;
         }
-        setClinicas([
-          {
-            id: fresh.id,
-            nombre: fresh.nombre,
-            ciudad: fresh.ciudad || "",
-          },
-        ]);
+
+        const actual = rows.find((c) => String(c.id) === String(clinicaId));
+        const resto = rows.filter((c) => String(c.id) !== String(clinicaId));
+        // Si la clínica de la sesión ya no está en DB, no la ofrecemos.
+        setClinicas(actual ? [actual, ...resto] : resto);
       } catch {
-        if (!cancelled) {
-          setClinicas([
-            {
-              id: clinicaId,
-              nombre: nombreFallback || "Esta clínica",
-              ciudad: ciudadFallback || "",
-            },
-          ]);
-        }
+        if (!cancelled) setClinicas([]);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [clinicaId, nombreFallback, ciudadFallback]);
+  }, [clinicaId]);
 
   return clinicas;
 }

@@ -96,17 +96,19 @@ export default function MascotaRegistroFields({
         ? clinicasValidas[0].id
         : "";
 
-  // Alta desde clínica: si hay una sola opción válida, forzarla como cabecera.
+  // Alta desde clínica: default = primera opción (clínica actual) si falta o es huérfana.
   useEffect(() => {
-    if (!clinicasValidas.length) return;
+    if (!Array.isArray(clinicas)) return;
     if (tieneClinicaRef) return;
+    if (!clinicasValidas.length) {
+      if (form.clinica_cabecera_id) onChange("clinica_cabecera_id", "");
+      return;
+    }
+    if (cabeceraEnLista) return;
     const preferred = clinicasValidas[0]?.id;
     if (!preferred) return;
     if (String(form.clinica_cabecera_id || "") === String(preferred)) return;
-    if (cabeceraEnLista && clinicasValidas.length > 1) return;
-    if (clinicasValidas.length === 1 || !cabeceraEnLista) {
-      onChange("clinica_cabecera_id", preferred);
-    }
+    onChange("clinica_cabecera_id", preferred);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clinicasValidas.map((c) => c.id).join("|"), form.clinica_cabecera_id, tieneClinicaRef]);
 

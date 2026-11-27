@@ -118,7 +118,7 @@ function FichaMascota() {
     }
   }, [mascota, chapitaId, canActivate]);
 
-  // Escaneo público: IP → ubicación aproximada → aviso al tutor (sin GPS del navegador).
+  // Escaneo público: intenta GPS del dispositivo (mejor) y si no, IP aproximada.
   useEffect(() => {
     if (!mascota?.id) return;
 
@@ -130,12 +130,51 @@ function FichaMascota() {
       /* ignore */
     }
 
+    function readGpsCoords(timeoutMs = 4500) {
+      return new Promise((resolve) => {
+        if (typeof navigator === 'undefined' || !navigator.geolocation) {
+          resolve(null);
+          return;
+        }
+        let settled = false;
+        const finish = (value) => {
+          if (settled) return;
+          settled = true;
+          resolve(value);
+        };
+        const timer = setTimeout(() => finish(null), timeoutMs);
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            clearTimeout(timer);
+            finish({
+              lat: pos.coords.latitude,
+              lon: pos.coords.longitude,
+              accuracy: pos.coords.accuracy,
+            });
+          },
+          () => {
+            clearTimeout(timer);
+            finish(null);
+          },
+          {
+            enableHighAccuracy: false,
+            timeout: timeoutMs,
+            maximumAge: 120000,
+          },
+        );
+      });
+    }
+
     (async () => {
       try {
+        const coords = await readGpsCoords();
         await fetch('/api/chapitas/escaneo', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mascotaId: mascota.id }),
+          body: JSON.stringify({
+            mascotaId: mascota.id,
+            ...(coords ? { coords } : {}),
+          }),
           keepalive: true,
         });
       } catch {

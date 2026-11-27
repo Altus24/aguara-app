@@ -83,7 +83,7 @@ export default function ClinicaPanel() {
     async function loadAlerts() {
       try {
         const [citas, rows] = await Promise.all([
-          listarCitasPendientes(clinica.id),
+          listarCitasPendientes(clinica.id, { soloHorarioVigente: true }),
           listarNotificacionesClinica(clinica.id, { soloNoLeidas: true }),
         ]);
         if (cancelled) return;

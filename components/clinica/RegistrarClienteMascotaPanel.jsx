@@ -51,9 +51,7 @@ export default function RegistrarClienteMascotaPanel({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const clinicasCabecera = useClinicaCabeceraOptions(clinicaId, {
-    nombreFallback: clinicaNombre || "Esta clínica",
-  });
+  const clinicasCabecera = useClinicaCabeceraOptions(clinicaId);
 
   useEffect(() => {
     setPetForm((f) =>

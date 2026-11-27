@@ -5,7 +5,10 @@ import { registrarEscaneoChapita } from "@/lib/chapitas/registrarEscaneo";
 
 export async function POST(request: Request) {
   try {
-    let body: { mascotaId?: string } = {};
+    let body: {
+      mascotaId?: string;
+      coords?: { lat?: number; lon?: number; accuracy?: number } | null;
+    } = {};
     try {
       body = await request.json();
     } catch {
@@ -19,11 +22,20 @@ export async function POST(request: Request) {
 
     const ip = getClientIpFromHeaders(request.headers);
     const userAgent = request.headers.get("user-agent");
+    const coords =
+      body.coords && typeof body.coords === "object"
+        ? {
+            lat: body.coords.lat,
+            lon: body.coords.lon,
+            accuracy: body.coords.accuracy,
+          }
+        : null;
 
     const result = await registrarEscaneoChapita({
       mascotaId,
       ip,
       userAgent,
+      coords,
     });
 
     if (!result.ok) {

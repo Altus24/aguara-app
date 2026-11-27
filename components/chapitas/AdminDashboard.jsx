@@ -1052,11 +1052,11 @@ export default function AdminDashboard() {
                     const isUltima = row.tirada === tiradaActual;
                     const busy = zipProgress?.tirada === row.tirada;
                     return (
-                      <tr key={row.tirada} className="border-t">
-                        <td className="p-2 font-semibold">T{row.tirada}</td>
-                        <td className="p-2">
+                    <tr key={row.tirada} className="border-t">
+                      <td className="p-2 font-semibold">T{row.tirada}</td>
+                      <td className="p-2">
                           {row.disponibles} / {row.cantidad}
-                        </td>
+                      </td>
                         <td className="p-2">
                           {row.activadas} / {row.cantidad}
                         </td>
@@ -1071,17 +1071,17 @@ export default function AdminDashboard() {
                             {plantillaLabel(row.plantilla_id, row.definida)}
                           </span>
                         </td>
-                        <td className="p-2 font-mono text-xs">
-                          {row.desde}–{row.hasta}
-                        </td>
-                        <td className="p-2">
+                      <td className="p-2 font-mono text-xs">
+                        {row.desde}–{row.hasta}
+                      </td>
+                      <td className="p-2">
                           <div className="flex flex-col gap-1 items-start">
-                            <button
-                              type="button"
-                              disabled={Boolean(zipProgress)}
+                        <button
+                          type="button"
+                          disabled={Boolean(zipProgress)}
                               onClick={() => handleDownloadTiradaZipOnly(row.tirada)}
-                              className="text-blue-600 underline disabled:opacity-50"
-                            >
+                          className="text-blue-600 underline disabled:opacity-50"
+                        >
                               {busy && zipProgress.phase === 'zip'
                                 ? `ZIP ${zipProgress.done}/${zipProgress.total}`
                                 : 'ZIP'}
@@ -1111,9 +1111,9 @@ export default function AdminDashboard() {
                             }
                           >
                             Eliminar
-                          </button>
-                        </td>
-                      </tr>
+                        </button>
+                      </td>
+                    </tr>
                     );
                   })}
                 </tbody>

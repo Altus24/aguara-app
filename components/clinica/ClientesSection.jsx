@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import CitaForm from "@/components/clinica/CitaForm";
 import { ConsultaForm } from "@/components/clinica/HistoriasSection";
+import { FichaPaciente } from "@/components/clinica/PacientesSection";
 import useClinicaCabeceraOptions from "@/components/clinica/useClinicaCabeceraOptions";
 import {
   cardClass,
@@ -166,9 +167,7 @@ function NuevoClienteForm({ clinicaId, clinicaNombre, onCreated }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const clinicasCabecera = useClinicaCabeceraOptions(clinicaId, {
-    nombreFallback: clinicaNombre || "Esta clínica",
-  });
+  const clinicasCabecera = useClinicaCabeceraOptions(clinicaId);
 
   useEffect(() => {
     setPetForm((f) =>
@@ -451,6 +450,109 @@ function NuevoClienteForm({ clinicaId, clinicaNombre, onCreated }) {
   );
 }
 
+function NuevaMascotaEnClienteForm({
+  clinicaId,
+  clinicaNombre,
+  clienteId,
+  clienteNombre,
+  onCreated,
+  onCancel,
+}) {
+  const [petForm, setPetForm] = useState(() => emptyPetFormConCabecera(clinicaId));
+  const [chapitaCodigo, setChapitaCodigo] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const clinicasCabecera = useClinicaCabeceraOptions(clinicaId);
+
+  useEffect(() => {
+    setPetForm((f) =>
+      f.clinica_cabecera_id === clinicaId ? f : { ...f, clinica_cabecera_id: clinicaId || "" },
+    );
+  }, [clinicaId]);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    const invalid = validateMascotaRegistroForm(petForm);
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
+    const nombre = petForm.nombre_mascota.trim();
+    const confirmLabel = clienteNombre
+      ? `la mascota “${nombre}” para “${clienteNombre}”`
+      : `la mascota “${nombre}”`;
+    if (!(await confirmGuardar(confirmLabel))) return;
+
+    setSaving(true);
+    setError("");
+    try {
+      await crearPaciente(clinicaId, {
+        cliente_id: clienteId,
+        nombre,
+        especie: petForm.especie,
+        raza: petForm.raza,
+        sexo: petForm.sexo,
+        castrado: petForm.castrado,
+        temperamento: petForm.temperamento,
+        fecha_nacimiento: petForm.fecha_nacimiento,
+        peso: petForm.peso,
+        nro_chip: petForm.nro_chip,
+        enfermedad: petForm.enfermedad,
+        medicacion: petForm.medicacion,
+        datos_adicionales: petForm.datos_adicionales,
+        chapita_codigo: chapitaCodigo.trim() || null,
+        clinica_cabecera_id: petForm.clinica_cabecera_id || clinicaId,
+        clinica_ref_nombre: petForm.clinica_ref_nombre,
+        clinica_ref_direccion: petForm.clinica_ref_direccion,
+        clinica_ref_telefono: petForm.clinica_ref_telefono,
+      });
+      await onCreated(nombre);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo crear la mascota.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <p className="text-sm font-medium text-aguara-ink">Nueva mascota</p>
+      <MascotaRegistroFields
+        form={petForm}
+        onChange={(name, value) => setPetForm((f) => ({ ...f, [name]: value }))}
+        fieldClass={fieldClass}
+        fotoInputId="ficha-cli-foto"
+        clinicas={clinicasCabecera}
+      />
+      <Field label="Código identificador (opcional)" id="ficha-cli-chapita">
+        <input
+          id="ficha-cli-chapita"
+          className={fieldClass}
+          placeholder="Ej. T1-004 — dejar vacío si aún no tiene"
+          value={chapitaCodigo}
+          onChange={(e) => setChapitaCodigo(e.target.value)}
+        />
+      </Field>
+      {error ? (
+        <p className="text-sm text-red-700" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        <button type="submit" disabled={saving} className={primaryBtnClass}>
+          {saving ? "Guardando…" : "Guardar mascota"}
+        </button>
+        {onCancel ? (
+          <button type="button" className={secondaryBtnClass} onClick={onCancel} disabled={saving}>
+            Cancelar
+          </button>
+        ) : null}
+      </div>
+    </form>
+  );
+}
+
 function FichaCliente({ clinicaId, clinicaNombre, clienteId, onBack }) {
   const [cliente, setCliente] = useState(null);
   const [mascotas, setMascotas] = useState([]);
@@ -465,6 +567,8 @@ function FichaCliente({ clinicaId, clinicaNombre, clienteId, onBack }) {
   const [editing, setEditing] = useState(false);
   const [showCitaForm, setShowCitaForm] = useState(false);
   const [showConsultaForm, setShowConsultaForm] = useState(false);
+  const [showMascotaForm, setShowMascotaForm] = useState(false);
+  const [perfilMascotaId, setPerfilMascotaId] = useState(null);
   const [form, setForm] = useState({
     nombre_completo: "",
     email: "",
@@ -555,6 +659,19 @@ function FichaCliente({ clinicaId, clinicaNombre, clienteId, onBack }) {
     }
   }
 
+  if (perfilMascotaId) {
+    return (
+      <FichaPaciente
+        clinicaId={clinicaId}
+        pacienteId={perfilMascotaId}
+        onBack={() => {
+          setPerfilMascotaId(null);
+          load();
+        }}
+      />
+    );
+  }
+
   if (loading) return <p className="text-sm text-stone-500">Cargando cliente…</p>;
   if (!cliente) {
     return error ? <p className="text-sm text-red-700">{error}</p> : null;
@@ -572,6 +689,7 @@ function FichaCliente({ clinicaId, clinicaNombre, clienteId, onBack }) {
             className={secondaryBtnClass}
             onClick={() => {
               setShowConsultaForm(false);
+              setShowMascotaForm(false);
               setShowCitaForm((v) => !v);
               setMessage("");
               setError("");
@@ -584,6 +702,7 @@ function FichaCliente({ clinicaId, clinicaNombre, clienteId, onBack }) {
             className={primaryBtnClass}
             onClick={() => {
               setShowCitaForm(false);
+              setShowMascotaForm(false);
               setShowConsultaForm((v) => !v);
               setMessage("");
               setError("");
@@ -759,19 +878,68 @@ function FichaCliente({ clinicaId, clinicaNombre, clienteId, onBack }) {
 
       <div className="grid gap-5 lg:grid-cols-2">
         <div className={cardClass}>
-          <h3 className="font-semibold text-aguara-ink">Mascotas asociadas</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-semibold text-aguara-ink">Mascotas asociadas</h3>
+            <button
+              type="button"
+              className={secondaryBtnClass}
+              onClick={() => {
+                setShowCitaForm(false);
+                setShowConsultaForm(false);
+                setShowMascotaForm((v) => !v);
+                setMessage("");
+                setError("");
+              }}
+            >
+              {showMascotaForm ? "Cerrar" : "Agregar mascota"}
+            </button>
+          </div>
           {mascotas.length === 0 ? (
             <p className="mt-3 text-sm text-stone-500">Sin mascotas.</p>
           ) : (
             <ul className="mt-3 divide-y divide-stone-100">
               {mascotas.map((m) => (
-                <li key={m.id} className="py-2 text-sm">
-                  <strong>{m.nombre}</strong> · {m.especie}
-                  {m.raza ? ` · ${m.raza}` : ""}
+                <li key={m.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <div>
+                    <strong>{m.nombre}</strong> · {m.especie}
+                    {m.raza ? ` · ${m.raza}` : ""}
+                  </div>
+                  <button
+                    type="button"
+                    className="shrink-0 text-sm font-medium text-aguara-orange hover:underline"
+                    onClick={() => {
+                      setShowMascotaForm(false);
+                      setShowCitaForm(false);
+                      setShowConsultaForm(false);
+                      setPerfilMascotaId(m.id);
+                    }}
+                  >
+                    Ver perfil
+                  </button>
                 </li>
               ))}
             </ul>
           )}
+          {showMascotaForm ? (
+            <div className="mt-4 border-t border-stone-100 pt-4">
+              <NuevaMascotaEnClienteForm
+                clinicaId={clinicaId}
+                clinicaNombre={clinicaNombre}
+                clienteId={clienteId}
+                clienteNombre={cliente.nombre_completo}
+                onCancel={() => setShowMascotaForm(false)}
+                onCreated={async (mascotaNombre) => {
+                  setShowMascotaForm(false);
+                  setMessage(
+                    mascotaNombre
+                      ? `Mascota “${mascotaNombre}” agregada al cliente.`
+                      : "Mascota agregada al cliente.",
+                  );
+                  await load();
+                }}
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className={cardClass}>
